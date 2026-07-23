@@ -2,7 +2,6 @@ name: Build & Cache
 on:
   push:
     branches: [main]
-    paths: ['pkgs/**', 'lib/**', '*.nix', 'flake.lock']
   pull_request:
     branches: [main]
 
