@@ -13,7 +13,7 @@ let
   node_modules = pkgs.stdenv.mkDerivation {
     pname = "oh-my-opencode-node_modules";
     inherit version src;
-    nativeBuildInputs = [ pkgs.nodejs pkgs.pnpm pkgs.cacert ];
+    nativeBuildInputs = [ pkgs.nodejs pkgs.bun pkgs.cacert ];
     dontConfigure = true;
     patchPhase = ''
       # pnpm 需要 pnpm-workspace.yaml 来识别 workspace packages
@@ -22,8 +22,8 @@ let
     '';
     buildPhase = ''
       export HOME=$TMPDIR
-      # 每请求超时 10 分钟（默认 60s，大包下载不够）
-      pnpm install --no-frozen-lockfile --ignore-scripts --fetch-timeout 600000
+      # 上游使用 bun.lock，使用 bun install 确保依赖版本固定
+      bun install --no-progress --ignore-scripts
     '';
     installPhase = ''
       rm -rf node_modules/.cache
@@ -32,7 +32,7 @@ let
     '';
     dontFixup = true;
     outputHashMode = "recursive";
-    outputHash = "sha256-LFDQodFeqwR8OesFIKEVP6Mg/cjiKmsCrdLyJR3a69c=";
+    outputHash = "sha256-0000000000000000000000000000000000000000000=";
   };
 in
 pkgs.stdenv.mkDerivation {
