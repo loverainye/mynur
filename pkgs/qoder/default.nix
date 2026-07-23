@@ -37,7 +37,7 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "https://download.qoder.com/release/latest/qoder_amd64.deb";
-    sha256 = "sha256-TEe7tR6EG+0crZ/6z8Sw5ohIgE1riczKzAYRvrUHWDA=";
+    sha256 = "sha256-erqVxhtTrR8Fxmnajx5pw1xqs4rtHDlhUkDsySKDd1k=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook makeWrapper ];
