@@ -1,0 +1,14 @@
+--- a/src/lifecycle/main.ts
++++ b/src/lifecycle/main.ts
+@@ -329,3 +329,11 @@
+   console.log('✅ 服务已就绪');
+ 
++  // 定期清理过期的 question（防止过期问题阻塞后续消息处理）
++  // cleanupExpired 只在 shutdown 时调用，过期问题会一直留在内存里
++  const QUESTION_EXPIRY_MS = 5 * 60 * 1000; // 5 分钟
++  setInterval(() => {
++    questionHandler.cleanupExpired(QUESTION_EXPIRY_MS);
++  }, 60_000); // 每分钟检查一次
++  console.log('[Lifecycle] 已启动过期问题清理定时器（超时: 5 分钟，检查间隔: 1 分钟）');
++
+   // 优雅退出处理（委托给 lifecycle/shutdown 模块）

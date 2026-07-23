@@ -1,0 +1,24 @@
+--- a/src/feishu/client.ts
++++ b/src/feishu/client.ts
+@@ -1,5 +1,6 @@
+ import * as lark from '@larksuiteoapi/node-sdk';
+ import { feishuConfig } from '../config.js';
++import https from 'node:https';
+ import { EventEmitter } from 'events';
+ import type { ReadStream } from 'fs';
+ import {
+@@ -177,9 +178,14 @@
+ 
+     // 监听消息撤回事件
+     // 本地不再重复注册撤回事件，避免与 onMessageRecalled 冲突
++    // Fix: ws library creates its own TLS connections independent of axios.
++    // Without a custom agent, it uses Node.js default agent (keepAlive=true),
++    // causing stale TLS sessions → "unknown certificate verification error".
++    const wsAgent = new https.Agent({ keepAlive: false });
+     this.wsClient = new lark.WSClient({
+       appId: feishuConfig.appId,
+       appSecret: feishuConfig.appSecret,
++      agent: wsAgent,
+     });
+ 
+     // 启动连接

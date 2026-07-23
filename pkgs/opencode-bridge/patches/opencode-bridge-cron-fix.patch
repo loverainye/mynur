@@ -1,0 +1,86 @@
+--- a/src/admin/routes/cron.ts	2026-06-16 11:12:04.844148898 +0800
++++ b/src/admin/routes/cron.ts	2026-06-16 11:13:22.632442367 +0800
+@@ -6,6 +6,7 @@
+ 
+ import express from 'express';
+ import type { RuntimeCronManager } from '../../reliability/runtime-cron.js';
++import { getRuntimeCronManager } from '../../reliability/runtime-cron.js';
+ 
+ export interface CronRoutesOptions {
+   cronManager: RuntimeCronManager | undefined;
+@@ -13,20 +14,21 @@
+ 
+ export function createCronRoutes(options: CronRoutesOptions): express.Router {
+   const router = express.Router();
+-  const { cronManager } = options;
+ 
+   // ── GET /api/cron
+   router.get('/', (_req, res) => {
+-    if (!cronManager) {
++    const mgr = getRuntimeCronManager();
++    if (!mgr) {
+       res.json({ jobs: [] });
+       return;
+     }
+-    res.json({ jobs: cronManager.listJobs() });
++    res.json({ jobs: mgr.listJobs() });
+   });
+ 
+   // ── POST /api/cron/create
+   router.post('/create', (req, res) => {
+-    if (!cronManager) {
++    const mgr = getRuntimeCronManager();
++    if (!mgr) {
+       res.status(503).json({ error: 'CronManager not available' });
+       return;
+     }
+@@ -36,7 +38,7 @@
+       return;
+     }
+     try {
+-      const job = cronManager.addJob({
++      const job = mgr.addJob({
+         name: name || 'Custom Cron',
+         schedule: { kind: 'cron', expr: cronExpression },
+         payload: {
+@@ -58,26 +60,28 @@
+ 
+   // ── POST /api/cron/:id/toggle
+   router.post('/:id/toggle', (req, res) => {
+-    if (!cronManager) {
++    const mgr = getRuntimeCronManager();
++    if (!mgr) {
+       res.status(503).json({ error: 'CronManager not available' });
+       return;
+     }
+-    const job = cronManager.getJob(req.params.id);
++    const job = mgr.getJob(req.params.id);
+     if (!job) {
+       res.status(404).json({ error: 'Job not found' });
+       return;
+     }
+-    const updated = cronManager.updateJob({ id: job.id, enabled: !job.enabled });
++    const updated = mgr.updateJob({ id: job.id, enabled: !job.enabled });
+     res.json({ ok: true, job: updated });
+   });
+ 
+   // ── DELETE /api/cron/:id
+   router.delete('/:id', (req, res) => {
+-    if (!cronManager) {
++    const mgr = getRuntimeCronManager();
++    if (!mgr) {
+       res.status(503).json({ error: 'CronManager not available' });
+       return;
+     }
+-    const removed = cronManager.removeJob(req.params.id);
++    const removed = mgr.removeJob(req.params.id);
+     if (!removed) {
+       res.status(404).json({ error: 'Job not found' });
+       return;
+@@ -86,4 +90,4 @@
+   });
+ 
+   return router;
+-}
+\ 文件末尾没有换行符
++}
