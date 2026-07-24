@@ -32,7 +32,7 @@ let
     '';
     dontFixup = true;
     outputHashMode = "recursive";
-    outputHash = "sha256-0000000000000000000000000000000000000000000=";
+    outputHash = "sha256-tmNwX9WivwWYCwr1U8zuFiPlCecpJsHjZqvCT9zCarc=";
   };
 in
 pkgs.stdenv.mkDerivation {
