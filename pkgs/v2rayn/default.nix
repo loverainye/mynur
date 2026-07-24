@@ -100,12 +100,12 @@ stdenv.mkDerivation rec {
 
     mkdir -p $out/share/v2rayn $out/bin
 
-    # Copy all files from extracted directory
-    cp -r v2rayN/* $out/share/v2rayn/
-    chmod +x $out/share/v2rayN/v2rayN
+    # Copy all files from extracted directory (目录名是 v2rayN-linux-64)
+    cp -r v2rayN-linux-64/* $out/share/v2rayn/
+    chmod +x $out/share/v2rayn/v2rayN
 
     # Create wrapper
-    makeWrapper $out/share/v2rayN/v2rayN $out/bin/v2rayN \
+    makeWrapper $out/share/v2rayn/v2rayN $out/bin/v2rayN \
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeDeps}"
 
     # Install desktop file
@@ -122,8 +122,8 @@ Comment=A GUI client for Windows and Linux, support Xray core and sing-box-core 
 EOF
 
     # Install icon
-    if [ -f v2rayN/v2rayN.png ]; then
-      install -Dm644 v2rayN/v2rayN.png $out/share/pixmaps/v2rayn.png
+    if [ -f v2rayN-linux-64/v2rayN.png ]; then
+      install -Dm644 v2rayN-linux-64/v2rayN.png $out/share/pixmaps/v2rayn.png
     fi
 
     runHook postInstall
