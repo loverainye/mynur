@@ -2,6 +2,7 @@
   lib,
   stdenv,
   fetchurl,
+  unzip,
   autoPatchelfHook,
   makeWrapper,
   copyDesktopItems,
