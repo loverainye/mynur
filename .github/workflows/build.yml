@@ -21,25 +21,29 @@ jobs:
           name: mynur
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       
+      - name: Clean nix store cache
+        run: |
+          nix store gc --max 0 2>/dev/null || true
+      
       - name: Build all packages
         run: |
-          nix build .#packages.x86_64-linux.codex
-          nix build .#packages.x86_64-linux.opencode-cli
-          nix build .#packages.x86_64-linux.opencode-gui
-          nix build .#packages.x86_64-linux.mimode-cli
-          nix build .#packages.x86_64-linux.antigravity
-          nix build .#packages.x86_64-linux.antigravity-cli
-          nix build .#packages.x86_64-linux.qoder
-          nix build .#packages.x86_64-linux.qoder-cli
-          nix build .#packages.x86_64-linux.cc-switch-cli
-          nix build .#packages.x86_64-linux.cc-switch-gui
-          nix build .#packages.x86_64-linux.cctui
-          nix build .#packages.x86_64-linux.kilo-cli
-          nix build .#packages.x86_64-linux.oh-my-opencode
-          nix build .#packages.x86_64-linux.opencode-bridge
-          nix build .#packages.x86_64-linux.graphify
-          nix build .#packages.x86_64-linux.dingtalk
-          nix build .#packages.x86_64-linux.duckdb-odbc
-          nix build .#packages.x86_64-linux.warpd
-          nix build .#packages.x86_64-linux.rustdesk
-          nix build .#packages.x86_64-linux.v2rayn
+          nix build .#packages.x86_64-linux.codex --refresh
+          nix build .#packages.x86_64-linux.opencode-cli --refresh
+          nix build .#packages.x86_64-linux.opencode-gui --refresh
+          nix build .#packages.x86_64-linux.mimode-cli --refresh
+          nix build .#packages.x86_64-linux.antigravity --refresh
+          nix build .#packages.x86_64-linux.antigravity-cli --refresh
+          nix build .#packages.x86_64-linux.qoder --refresh
+          nix build .#packages.x86_64-linux.qoder-cli --refresh
+          nix build .#packages.x86_64-linux.cc-switch-cli --refresh
+          nix build .#packages.x86_64-linux.cc-switch-gui --refresh
+          nix build .#packages.x86_64-linux.cctui --refresh
+          nix build .#packages.x86_64-linux.kilo-cli --refresh
+          nix build .#packages.x86_64-linux.oh-my-opencode --refresh
+          nix build .#packages.x86_64-linux.opencode-bridge --refresh
+          nix build .#packages.x86_64-linux.graphify --refresh
+          nix build .#packages.x86_64-linux.dingtalk --refresh
+          nix build .#packages.x86_64-linux.duckdb-odbc --refresh
+          nix build .#packages.x86_64-linux.warpd --refresh
+          nix build .#packages.x86_64-linux.rustdesk --refresh
+          nix build .#packages.x86_64-linux.v2rayn --refresh
