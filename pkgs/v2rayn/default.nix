@@ -53,6 +53,7 @@ stdenv.mkDerivation rec {
     autoPatchelfHook
     makeWrapper
     copyDesktopItems
+    unzip
   ];
 
   buildInputs = [
