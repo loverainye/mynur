@@ -8,11 +8,11 @@
 
 stdenv.mkDerivation rec {
   pname = "qoder-cli";
-  version = "1.1.1";
+  version = "1.1.6";
 
   src = fetchurl {
     url = "https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli/releases/${version}/qodercli-linux-x64.tar.gz";
-    sha256 = "sha256-IbYOPQ2ducNeU4XG2VI2KOGHNbe+W7vBqRmW5O1qKyo=";
+    sha256 = "sha256-1mHM+SleLB2YFkCQEaCm1wF9ZIY6aJEvTi+TiBvN3KQ=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

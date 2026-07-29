@@ -9,11 +9,11 @@
 
 stdenv.mkDerivation rec {
   pname = "codex";
-  version = "0.144.6";
+  version = "0.145.0";
 
   src = fetchurl {
     url = "https://github.com/openai/codex/releases/download/rust-v${version}/codex-x86_64-unknown-linux-musl.tar.gz";
-    sha256 = "sha256-ap3vUaCtjOpmhNjrO/AzyJ8z47xc/kkvGh4KcYRRocY=";
+    sha256 = "sha256-v68Tybo08q12TkqRbEnPcXeuujKc8PcZ4iJ1ZvyNZio=";
   };
 
   # Tarball contains a single file (not a directory) so we need to extract manually

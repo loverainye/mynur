@@ -14,11 +14,11 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "claude-code";
-  version = "2.1.205";
+  version = "2.1.220";
 
   src = fetchurl {
     url = "${baseUrl}/${version}/linux-x64/claude";
-    sha256 = "sha256-3Yc0wLalA/4dF0JRhOV7OXwwuwM3oz8UcNmYX+v+Wwk=";
+    sha256 = "sha256-Z09h8g/zBvMQDPkgDkw2xLcCeLW+8ohFSYGblCqJyGM=";
   };
 
   dontUnpack = true;

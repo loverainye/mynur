@@ -1,7 +1,7 @@
 { stdenv, fetchurl, autoPatchelfHook, glibc, lib }:
 
 let
-  version = "1.1.5";
+  version = "1.1.8";
 in
 stdenv.mkDerivation {
   pname = "antigravity-cli";
@@ -9,7 +9,7 @@ stdenv.mkDerivation {
 
   src = fetchurl {
     url = "https://github.com/google-antigravity/antigravity-cli/releases/download/${version}/agy_cli_linux_x64.tar.gz";
-    sha256 = "sha256-HVhlAbihPRRuiqPH8AY09QxgNOLEKOp9ATN302MVppo=";
+    sha256 = "sha256-6S5iFVMrPOhEVeNBlEBndTrZD20kzrzsgALOE35RYs4=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook ];

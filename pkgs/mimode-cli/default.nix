@@ -3,9 +3,9 @@
 { stdenv, lib, fetchurl, autoPatchelfHook, glibc, makeWrapper }:
 import ../../lib/binary.nix { inherit stdenv lib fetchurl autoPatchelfHook glibc makeWrapper; } {
   pname = "mimode";
-  version = "0.1.7";
-  url = "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v0.1.7/mimocode-linux-x64.tar.gz";
-  hash = "sha256-H+tiDnRVIs1Dc3Cc7ZwVbcId1HAXP+tuVIIiGcOYCBQ=";
+  version = "0.1.9";
+  url = "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v0.1.9/mimocode-linux-x64.tar.gz";
+  hash = "sha256-ma3gomI12A23u2rAMZsPZQjf5oTiz6t6AIAa1qoqxnM=";
   binaryName = "mimo";
   binName = "mimo";
   meta = {
