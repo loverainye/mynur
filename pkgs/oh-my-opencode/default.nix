@@ -1,13 +1,13 @@
 { pkgs, lib, fetchFromGitHub }:
 
 let
-  version = "4.19.0"; # 唯一版本源
+  version = "4.19.2"; # 唯一版本源
 
   src = fetchFromGitHub {
     owner = "code-yeongyu";
     repo = "oh-my-openagent";
     rev = "v${version}";
-    hash = "sha256-wSUIckQjAaiT86m5WIK2DJVWSIB8o4eBuwWQQyOZrp0=";
+    hash = "sha256-Pa2p3DGW9gUmkIdI3x78B0Zrzm5ZT9qgAbJqnadXZds=";
   };
 
   node_modules = pkgs.stdenv.mkDerivation {
@@ -32,6 +32,8 @@ let
     '';
     dontFixup = true;
     outputHashMode = "recursive";
+    # 升级到 v4.19.2 时：此 hash 仍是 v4.19.0 的值，bun.lock 可能已变。
+    # 下次 nix build 本 FOD 时若 hash 不匹配，nix 会打印 told 选区，把该值复制过来即可。
     outputHash = "sha256-tmNwX9WivwWYCwr1U8zuFiPlCecpJsHjZqvCT9zCarc=";
   };
 in

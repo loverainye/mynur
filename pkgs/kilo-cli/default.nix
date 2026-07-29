@@ -3,9 +3,9 @@
 { stdenv, lib, fetchurl, autoPatchelfHook, glibc, makeWrapper }:
 import ../../lib/binary.nix { inherit stdenv lib fetchurl autoPatchelfHook glibc makeWrapper; } {
   pname = "kilo-cli";
-  version = "7.4.11";
-  url = "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.11/kilo-linux-x64.tar.gz";
-  hash = "sha256-sGDdTglLD5lm3gPYoNDVzI5rsjqwTx0Et+OVHRMHl3A=";
+  version = "7.4.16";
+  url = "https://github.com/Kilo-Org/kilocode/releases/download/v7.4.16/kilo-linux-x64.tar.gz";
+  hash = "sha256-3SM9vumNGfNaYq0/3IvU7ZEqgwDw3dYfQyYz/hSPE2s=";
   binaryName = "kilo";
   binName = "kilo";
   extraFiles = ''

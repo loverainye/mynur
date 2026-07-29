@@ -12,13 +12,13 @@
 
 buildNpmPackage rec {
   pname = "qwen-code";
-  version = "0.19.5";
+  version = "0.21.0";
 
   src = fetchFromGitHub {
     owner = "QwenLM";
     repo = "qwen-code";
     tag = "v${version}";
-    hash = "sha256-ELeFxH7zcrZbyQALu1n59juY44GDvd/oVOKGgBTwmmg=";
+    hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # TODO: uncomment in home.nix then run `nix build` to get correct hash
   };
 
   npmDepsFetcherVersion = 3;

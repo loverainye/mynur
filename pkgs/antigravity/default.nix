@@ -8,11 +8,11 @@
 }:
 
 let
-  version = "2.1.4";
+  version = "2.2.1";
 
   src = fetchurl {
-    url = "https://storage.googleapis.com/antigravity-public/antigravity-hub/${version}-6481382726303744/linux-x64/Antigravity.tar.gz";
-    sha256 = "sha256-T/sDKgQQ0i/lDL32bXL1vXi+vvBYIp3AUktL3waaZZo=";
+    url = "https://storage.googleapis.com/antigravity-public/antigravity-hub/${version}-5287492581195776/linux-x64/Antigravity.tar.gz";
+    sha256 = "sha256-prp3BG+SqhziHYoMZ0lUca9MK+EbpiTl2TWCGWmyCYk=";
   };
 
   antigravity = stdenv.mkDerivation {

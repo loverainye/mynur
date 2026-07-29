@@ -3,9 +3,9 @@
 { stdenv, lib, fetchurl, autoPatchelfHook, glibc, makeWrapper }:
 import ../../lib/binary.nix { inherit stdenv lib fetchurl autoPatchelfHook glibc makeWrapper; } {
   pname = "opencode";
-  version = "1.18.4";
-  url = "https://github.com/anomalyco/opencode/releases/download/v1.18.4/opencode-linux-x64.tar.gz";
-  hash = "sha256-urRjw/syJNOIu3z61j84cD35zwviz9LOjLSdiGtToXQ=";
+  version = "1.18.7";
+  url = "https://github.com/anomalyco/opencode/releases/download/v1.18.7/opencode-linux-x64.tar.gz";
+  hash = "sha256-y12dbS+PvvCpyXXtRJT3Oypi9OT/1Qi8wyEtpPp2w9o=";
   binaryName = "opencode";
   binName = "opencode";
   customWrapper = ''

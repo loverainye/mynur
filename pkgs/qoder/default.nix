@@ -33,11 +33,11 @@
 
 stdenv.mkDerivation rec {
   pname = "qoder";
-  version = "1.16.1";
+  version = "1.19.1";
 
   src = fetchurl {
-    url = "https://download.qoder.com/release/latest/qoder_amd64.deb";
-    sha256 = "sha256-erqVxhtTrR8Fxmnajx5pw1xqs4rtHDlhUkDsySKDd1k=";
+    url = "https://download.qoder.com/release/${version}/qoder_amd64.deb";
+    sha256 = "sha256-7Kxvv+e7rZenzgvcSPhztDRIGy7cy/tk+wMbC32fthg=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook makeWrapper ];

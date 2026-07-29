@@ -8,11 +8,11 @@
 
 stdenv.mkDerivation {
   pname = "duckdb-odbc";
-  version = "1.5.4.1";
+  version = "1.5.5.0";
 
   src = fetchurl {
-    url = "https://github.com/duckdb/duckdb-odbc/releases/download/v1.5.4.1/duckdb_odbc-linux-amd64.zip";
-    sha256 = "sha256-puoL1mDa1iWT09iCX4bHQ3X95HT5rRFUVlXCtEAczWM=";
+    url = "https://github.com/duckdb/duckdb-odbc/releases/download/v1.5.5.0/duckdb_odbc-linux-amd64.zip";
+    sha256 = "sha256-shEmM/TtuEUU6VyJkn/DwyxGVaw22yJC90c7f7kPg2Q=";
   };
 
   nativeBuildInputs = [
