@@ -47,7 +47,7 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-desktop-linux-amd64.deb";
-    sha256 = "sha256-j0PdBvJw1cCHrDMEGm5ky6yvlIBshxqUurueOh7jnk=";
+    sha256 = "sha256-j0PdBvJw1cCHrDMEGLi5ky6yvlIBshxqUurueOh7jnk=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook makeWrapper ];
