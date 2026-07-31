@@ -1,10 +1,10 @@
 { lib
-, python3Packages
+, python313Packages
 , fetchFromGitHub
 , ...
 }:
 
-python3Packages.buildPythonApplication rec {
+python313Packages.buildPythonApplication rec {
   pname = "graphify";
   version = "0.9.16";
 
@@ -17,11 +17,11 @@ python3Packages.buildPythonApplication rec {
     hash = "sha256-1zujI03y4JQ2xUpihYsXEVLFiYy7rU7pua4zvSxltWg=";
   };
 
-  build-system = with python3Packages; [
+  build-system = with python313Packages; [
     setuptools
   ];
 
-  nativeBuildInputs = with python3Packages; [
+  nativeBuildInputs = with python313Packages; [
     pythonRelaxDepsHook
   ];
 
@@ -37,7 +37,7 @@ python3Packages.buildPythonApplication rec {
     "tree-sitter-sql"
   ];
 
-  propagatedBuildInputs = with python3Packages; [
+  propagatedBuildInputs = with python313Packages; [
     # 核心
     networkx
     datasketch
