@@ -34,7 +34,7 @@ let
     outputHashMode = "recursive";
     # 升级到 v4.19.2 时：此 hash 仍是 v4.19.0 的值，bun.lock 可能已变。
     # 下次 nix build 本 FOD 时若 hash 不匹配，nix 会打印 told 选区，把该值复制过来即可。
-    outputHash = "sha256-tmNwX9WivwWYCwr1U8zuFiPlCecpJsHjZqvCT9zCarc=";
+    outputHash = "sha256-l6rDz2ytHsPkagRIoenGNq7aFFWh/WwDUMqK+AMBZCs=";
   };
 in
 pkgs.stdenv.mkDerivation {
