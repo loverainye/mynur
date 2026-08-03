@@ -1,0 +1,81 @@
+name: Check Package Updates
+
+on:
+  schedule:
+    # 每天 UTC 15:00 检查更新（北京时间 23:00）
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: '自动更新并提交 PR'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for updates
+        id: check
+        run: |
+          chmod +x scripts/check-updates.sh
+          OUTPUT=$(./scripts/check-updates.sh 2>&1) || true
+          echo "$OUTPUT"
+          
+          if echo "$OUTPUT" | grep -q "所有包已是最新版本"; then
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            UPDATES=$(echo "$OUTPUT" | grep -E "^[a-z].*→" | head -20)
+            echo "updates<<EOF" >> $GITHUB_OUTPUT
+            echo "$UPDATES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create PR with updates
+        if: steps.check.outputs.has_updates == 'true' && (github.event.inputs.apply == 'true' || github.event_name == 'schedule')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATES: ${{ steps.check.outputs.updates }}
+        run: |
+          ./scripts/check-updates.sh --apply
+          BRANCH=$(git branch --show-current)
+          git push origin "$BRANCH"
+          
+          PR_BODY="## 自动更新检查
+
+          发现以下包有新版本:
+
+          \`\`\`
+          $UPDATES
+          \`\`\`
+
+          CI 构建通过后将自动推送 Cachix 缓存。"
+          
+          gh pr create \
+            --title "chore: auto-update packages $(date +%Y-%m-%d)" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH"
+      
+      - name: Post update summary
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          echo "## 🔄 发现包更新" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.check.outputs.updates }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Post no updates
+        if: steps.check.outputs.has_updates == 'false'
+        run: |
+          echo "## ✅ 所有包已是最新版本" >> $GITHUB_STEP_SUMMARY
