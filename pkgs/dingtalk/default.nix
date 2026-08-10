@@ -51,7 +51,7 @@
   nspr,
   nss,
   openldap,
-  openssl_1_1,
+  openssl,
   pango,
   pcre2,
   qt5,
@@ -128,7 +128,7 @@ let
     nspr
     nss
     openldap
-    openssl_1_1
+    openssl
     pango
     pcre2
     qt5.qtbase
