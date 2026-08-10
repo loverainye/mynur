@@ -40,6 +40,7 @@ python313Packages.buildPythonApplication rec {
   propagatedBuildInputs = with python313Packages; [
     # 核心
     networkx
+    numpy
     # datasketch: 仅用于 MinHash 相似度去重,非核心功能
     # 依赖 pybloomfilter3 不兼容 Python 3.14,暂时移除
     # datasketch

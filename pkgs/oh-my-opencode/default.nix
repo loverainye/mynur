@@ -188,6 +188,15 @@ BOOTSTRAP_EOF
 
   buildPhase = ''
     runHook preBuild
+    # 先构建被 senpi-plugin 依赖的 workspace 包（lsp-daemon/dist 必须在 build:senpi-plugin 之前存在）
+    if [ -d packages/lsp-daemon ]; then
+      echo "Building lsp-daemon first..."
+      (cd packages/lsp-daemon && bun run build) || true
+    fi
+    if [ -d packages/lsp-tools-mcp ]; then
+      echo "Building lsp-tools-mcp first..."
+      (cd packages/lsp-tools-mcp && bun run build) || true
+    fi
     bun run build
     runHook postBuild
   '';
