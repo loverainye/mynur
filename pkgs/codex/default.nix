@@ -9,7 +9,7 @@
 
 stdenv.mkDerivation rec {
   pname = "codex";
-  version = "0.145.0";
+  version = "rust-v0.147.0";
 
   src = fetchurl {
     url = "https://github.com/openai/codex/releases/download/rust-v${version}/codex-x86_64-unknown-linux-musl.tar.gz";
