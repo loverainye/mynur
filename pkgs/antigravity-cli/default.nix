@@ -1,7 +1,7 @@
 { stdenv, fetchurl, autoPatchelfHook, glibc, lib }:
 
 let
-  version = "1.1.8";
+  version = "1.1.12";
 in
 stdenv.mkDerivation {
   pname = "antigravity-cli";
