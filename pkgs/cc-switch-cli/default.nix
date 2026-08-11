@@ -3,7 +3,7 @@
 { stdenv, lib, fetchurl, autoPatchelfHook, glibc, makeWrapper }:
 import ../../lib/binary.nix { inherit stdenv lib fetchurl autoPatchelfHook glibc makeWrapper; } {
   pname = "cc-switch-cli";
-  version = "5.9.3";
+  version = "5.10.1";
   url = "https://github.com/SaladDay/cc-switch-cli/releases/download/v5.9.3/cc-switch-cli-v5.9.3-linux-x64-musl.tar.gz";
   hash = "sha256-pYHsJu/aeVGClJJDZl6nJdQgKcWLtLkTfQcIslWk+5E=";
   binaryName = "cc-switch";
