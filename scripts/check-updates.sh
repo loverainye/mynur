@@ -40,9 +40,8 @@ get_latest_release() {
   local repo="$1"
   local prefix="$2"
   local result=""
-  # 用 gh CLI (CI 中有 GITHUB_TOKEN)
   if command -v gh &>/dev/null; then
-    result=$(gh release list --repo "$repo" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+    result=$(gh release list --repo "$repo" --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
   fi
   if [ -z "$result" ]; then
     local auth_header=""
