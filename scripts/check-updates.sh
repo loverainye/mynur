@@ -39,13 +39,20 @@ get_current_version() {
 get_latest_release() {
   local repo="$1"
   local prefix="$2"
+  local result=""
   # 用 gh CLI (CI 中有 GITHUB_TOKEN)
   if command -v gh &>/dev/null; then
-    gh release list --repo "$repo" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo ""
-  else
-    curl -sf "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
-      | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo ""
+    result=$(gh release list --repo "$repo" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
   fi
+  if [ -z "$result" ]; then
+    local auth_header=""
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      auth_header="Authorization: token $GITHUB_TOKEN"
+    fi
+    result=$(curl -sf -H "$auth_header" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
+      | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
+  fi
+  echo "$result"
 }
 
 has_updates=false
