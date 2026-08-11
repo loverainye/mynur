@@ -27,6 +27,8 @@ jobs:
       
       - name: Check for updates
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x scripts/check-updates.sh
           OUTPUT=$(./scripts/check-updates.sh 2>&1) || true
