@@ -46,7 +46,7 @@
 
 let
   pname = "rustdesk";
-  version = "1.4.9";
+  version = "nightly";
 
   srcs = {
     x86_64-linux = fetchurl {

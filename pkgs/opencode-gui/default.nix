@@ -43,7 +43,7 @@
 
 stdenv.mkDerivation rec {
   pname = "opencode-desktop";
-  version = "1.18.7";
+  version = "1.18.16";
 
   src = fetchurl {
     url = "https://github.com/anomalyco/opencode/releases/download/v${version}/opencode-desktop-linux-amd64.deb";
