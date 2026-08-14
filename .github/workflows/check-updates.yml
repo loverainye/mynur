@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: '自动更新并提交 PR'
+        description: '自动更新并提交到 main'
         required: false
         default: 'false'
         type: choice
@@ -20,49 +20,89 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     
     steps:
       - uses: actions/checkout@v4
       
       - name: Check for updates
         id: check
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x scripts/check-updates.sh
-          OUTPUT=$(./scripts/check-updates.sh 2>&1) || true
+          set +e
+          OUTPUT=$(./scripts/check-updates.sh 2>&1)
+          STATUS=$?
+          set -e
           echo "$OUTPUT"
-          
-          if echo "$OUTPUT" | grep -q "所有包已是最新版本"; then
-            echo "has_updates=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_updates=true" >> $GITHUB_OUTPUT
-            UPDATES=$(echo "$OUTPUT" | grep -E "^[a-z].*→" | head -20)
-            echo "updates<<EOF" >> $GITHUB_OUTPUT
-            echo "$UPDATES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+
+          HAS_UPDATES=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_HAS_UPDATES=' | tail -1 | cut -d= -f2 || true)
+          HAS_APPLYABLE=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=' | tail -1 | cut -d= -f2 || true)
+          FAILED=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_FAILED=' | tail -1 | cut -d= -f2 || true)
+          : "${HAS_UPDATES:=false}"
+          : "${HAS_APPLYABLE:=false}"
+          : "${FAILED:=true}"
+          UPDATES=$(printf '%s\n' "$OUTPUT" | grep -E '^[a-z][a-z0-9-]*: .*→' || true)
+          {
+            echo "has_updates=$HAS_UPDATES"
+            echo "has_applyable_updates=$HAS_APPLYABLE"
+            echo "failed=$FAILED"
+            echo "updates<<EOF"
+            echo "$UPDATES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" -ne 0 ] || [ "$FAILED" = true ]; then
+            exit 1
           fi
       
       - name: Commit and push updates
-        if: steps.check.outputs.has_updates == 'true' && (github.event.inputs.apply == 'true' || github.event_name == 'schedule')
+        if: steps.check.outputs.has_applyable_updates == 'true' && steps.check.outputs.failed != 'true' && (github.event.inputs.apply == 'true' || github.event_name == 'schedule')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set +e
           ./scripts/check-updates.sh --apply
+          APPLY_STATUS=$?
+          set -e
+
+          if [ "$APPLY_STATUS" -ne 0 ]; then
+            echo "应用更新失败，禁止提交部分更新。" >&2
+            exit "$APPLY_STATUS"
+          fi
+
+          if git diff --quiet -- pkgs; then
+            echo "没有可提交的包更新，跳过提交。"
+            exit 0
+          fi
           
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add pkgs
           git commit -m "chore: auto-update packages $(date +%Y-%m-%d)"
           git push origin HEAD:main
       
       - name: Post update summary
         if: steps.check.outputs.has_updates == 'true'
+        env:
+          UPDATES: ${{ steps.check.outputs.updates }}
         run: |
-          echo "## 🔄 发现包更新" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.check.outputs.updates }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🔄 发现包更新"
+            echo ""
+            printf '%s\n' "$UPDATES"
+          } >> "$GITHUB_STEP_SUMMARY"
       
       - name: Post no updates
-        if: steps.check.outputs.has_updates == 'false'
+        if: steps.check.outputs.has_updates == 'false' && steps.check.outputs.failed != 'true'
         run: |
-          echo "## ✅ 所有包已是最新版本" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ 所有包已是最新版本" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post check failure
+        if: steps.check.outputs.failed == 'true' || failure()
+        run: |
+          {
+            echo "## ❌ 更新检查失败"
+            echo "检查失败与发现更新分开处理，未将失败当作更新。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
