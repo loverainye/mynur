@@ -23,7 +23,7 @@ let
     buildPhase = ''
       export HOME=$TMPDIR
       # 上游使用 bun.lock，使用 bun install 确保依赖版本固定
-      bun install --frozen-lockfile --os=linux --cpu=x64 --no-progress --ignore-scripts
+      bun install --frozen-lockfile --os=linux --cpu=x64 --linker=hoisted --backend=copyfile --no-progress --ignore-scripts
     '';
     installPhase = ''
       rm -rf node_modules/.cache
@@ -32,9 +32,8 @@ let
     '';
     dontFixup = true;
     outputHashMode = "recursive";
-    # 升级到 v4.19.2 时：此 hash 仍是 v4.19.0 的值，bun.lock 可能已变。
-    # 下次 nix build 本 FOD 时若 hash 不匹配，nix 会打印 told 选区，把该值复制过来即可。
-    outputHash = "sha256-l6rDz2ytHsPkagRIoenGNq7aFFWh/WwDUMqK+AMBZCs=";
+    # v5.0.0-beta.7；若安装器参数变化，需重新验证此固定输出 hash。
+    outputHash = "sha256-HyY2uxRviyA3qDuwSGsfY4LWcWDwYlBuT9LlCD5vYds=";
   };
 in
 pkgs.stdenv.mkDerivation {
