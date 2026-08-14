@@ -1,7 +1,7 @@
 { pkgs, lib, fetchFromGitHub }:
 
 let
-  version = "5.0.0-beta.5"; # 唯一版本源
+  version = "5.0.0-beta.7"; # 唯一版本源
 
   src = fetchFromGitHub {
     owner = "code-yeongyu";

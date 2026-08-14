@@ -14,7 +14,7 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "claude-code";
-  version = "2.1.227";
+  version = "2.1.231";
 
   src = fetchurl {
     url = "${baseUrl}/${version}/linux-x64/claude";
