@@ -23,7 +23,7 @@ let
     buildPhase = ''
       export HOME=$TMPDIR
       # 上游使用 bun.lock，使用 bun install 确保依赖版本固定
-      bun install --no-progress --ignore-scripts
+      bun install --frozen-lockfile --os=linux --cpu=x64 --no-progress --ignore-scripts
     '';
     installPhase = ''
       rm -rf node_modules/.cache
