@@ -2,6 +2,7 @@
 
 {
   codex = pkgs.callPackage ./pkgs/codex { };
+  chatgpt = pkgs.callPackage ./pkgs/chatgpt { };
   claude-code = pkgs.callPackage ./pkgs/claude-code { };
   opencode-cli = pkgs.callPackage ./pkgs/opencode-cli { };
   opencode-gui = pkgs.callPackage ./pkgs/opencode-gui { };
