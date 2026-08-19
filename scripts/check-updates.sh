@@ -6,31 +6,30 @@ REPO_ROOT="${CHECK_UPDATES_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 PKGS_DIR="$REPO_ROOT/pkgs"
 CHATGPT_PACKAGES_URL="https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages.gz"
 
-# 格式: "包名|owner/repo|当前版本前缀"
+# 格式: "包名|owner/repo|当前版本前缀|是否包含预发布版本"
 # 版本前缀: GitHub release tag 通常以 v 开头 (如 v1.18.4)，但 default.nix 中 version 字段不含 v
+# antigravity 使用 Google Storage 的不透明构建路径；cctui 和 warpd 固定 Git
+# commit，三者都没有可供此脚本可靠查询的 GitHub Release，不能放进此列表。
 PACKAGES=(
-  "codex|openai/codex|rust-v0."
-  "claude-code|anthropics/claude-code|2."
-  "opencode-cli|anomalyco/opencode|1."
-  "opencode-gui|anomalyco/opencode|1."
-  "mimode-cli|XiaomiMiMo/MiMo-Code|0."
-  "antigravity|google-antigravity/antigravity|2."
-  "antigravity-cli|google-antigravity/antigravity-cli|1."
-  "cc-switch-cli|SaladDay/cc-switch-cli|5."
-  "cc-switch-gui|farion1231/cc-switch|3."
-  "cctui|manateelazycat/cctui|20"
-  "kilo-cli|Kilo-Org/kilocode|7."
-  "oh-my-opencode|code-yeongyu/oh-my-openagent|4."
-  "rustdesk|rustdesk/rustdesk|1."
-  "warpd|loverainye/warpd|unstable"
+  "codex|openai/codex|rust-v0.|false"
+  "claude-code|anthropics/claude-code|2.|false"
+  "opencode-cli|anomalyco/opencode|1.|false"
+  "opencode-gui|anomalyco/opencode|1.|false"
+  "mimode-cli|XiaomiMiMo/MiMo-Code|0.|false"
+  "antigravity-cli|google-antigravity/antigravity-cli|1.|false"
+  "cc-switch-cli|SaladDay/cc-switch-cli|5.|false"
+  "cc-switch-gui|farion1231/cc-switch|3.|false"
+  "kilo-cli|Kilo-Org/kilocode|7.|false"
+  "oh-my-opencode|code-yeongyu/oh-my-openagent|5.|true"
+  "rustdesk|rustdesk/rustdesk|1.|false"
 )
 
 has_updates=false
 has_applyable_updates=false
 check_failed=false
 updates=""
+failures=""
 declare -A latest_release_cache
-declare -A latest_versions
 latest_release_result=""
 chatgpt_metadata_loaded=false
 chatgpt_latest=""
@@ -41,6 +40,14 @@ print_status_markers() {
   echo "CHECK_UPDATES_HAS_UPDATES=$has_updates"
   echo "CHECK_UPDATES_HAS_APPLYABLE_UPDATES=$has_applyable_updates"
   echo "CHECK_UPDATES_FAILED=$check_failed"
+  printf 'CHECK_UPDATES_FAILURES=%s\n' "${failures//$'\n'/; }"
+}
+
+record_failure() {
+  local message="$1"
+  echo "⚠️  $message"
+  failures+="$message"$'\n'
+  check_failed=true
 }
 
 # 从 default.nix 提取当前版本
@@ -58,23 +65,44 @@ get_current_version() {
 get_latest_release() {
   local repo="$1"
   local prefix="$2"
-  local cache_key="$repo|$prefix"
+  local include_prereleases="$3"
+  local cache_key="$repo|$prefix|$include_prereleases"
   if [[ -v "latest_release_cache[$cache_key]" ]]; then
     latest_release_result="${latest_release_cache[$cache_key]}"
     return
   fi
-  local result=""
+  local result="" tags=""
   if command -v gh &>/dev/null; then
-    result=$(gh release list --repo "$repo" --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+    local release_args=(--repo "$repo" --exclude-drafts --limit 100 --json tagName --jq '.[].tagName')
+    if [ "$include_prereleases" != true ]; then
+      release_args+=(--exclude-pre-releases)
+    fi
+    tags=$(gh release list "${release_args[@]}" 2>/dev/null || true)
+    while IFS= read -r tag; do
+      if normalize_github_version "$tag" "$prefix" >/dev/null; then
+        result="$tag"
+        break
+      fi
+    done <<< "$tags"
   fi
   if [ -z "$result" ]; then
-    local auth_header=""
+    local curl_args=(-sf)
     local github_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
     if [ -n "$github_token" ]; then
-      auth_header="Authorization: token $github_token"
+      curl_args+=(-H "Authorization: token $github_token")
     fi
-    result=$(curl -sf -H "$auth_header" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null \
-      | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null || echo "")
+    result=$(curl "${curl_args[@]}" \
+      "https://api.github.com/repos/$repo/releases?per_page=100" 2>/dev/null \
+      | python3 -c '
+import json, sys
+prefix, include_prereleases = sys.argv[1], sys.argv[2] == "true"
+for release in json.load(sys.stdin):
+    tag = release.get("tag_name", "")
+    version = tag[1:] if tag.startswith("v") else tag
+    if not release.get("draft") and (include_prereleases or not release.get("prerelease")) and version.startswith(prefix):
+        print(tag)
+        break
+' "$prefix" "$include_prereleases" 2>/dev/null || true)
   fi
   latest_release_cache["$cache_key"]="$result"
   latest_release_result="$result"
@@ -100,8 +128,7 @@ load_chatgpt_metadata() {
   local packages_file="${CHATGPT_PACKAGES_FILE:-}"
   if [ -n "$packages_file" ]; then
     if [ ! -f "$packages_file" ]; then
-      echo "⚠️  chatgpt: CHATGPT_PACKAGES_FILE 不存在: $packages_file"
-      check_failed=true
+      record_failure "chatgpt: CHATGPT_PACKAGES_FILE 不存在: $packages_file"
       return 1
     fi
   else
@@ -113,8 +140,7 @@ load_chatgpt_metadata() {
       --max-time 30 \
       "$CHATGPT_PACKAGES_URL" > "$packages_file"; then
       rm -f "$packages_file"
-      echo "⚠️  chatgpt: 无法获取官方 Packages.gz"
-      check_failed=true
+      record_failure "chatgpt: 无法获取官方 Packages.gz"
       return 1
     fi
   fi
@@ -159,8 +185,7 @@ else:
     raise SystemExit("Packages 元数据中没有有效的 chatgpt amd64 stanza")
 PY
   ); then
-    echo "⚠️  chatgpt: Packages 元数据校验失败"
-    check_failed=true
+    record_failure "chatgpt: Packages 元数据校验失败"
     [ -n "${CHATGPT_PACKAGES_FILE:-}" ] || rm -f "$packages_file"
     return 1
   fi
@@ -211,21 +236,18 @@ PY
 
 if [ "${CHECK_UPDATES_ONLY:-}" != "chatgpt" ]; then
   for entry in "${PACKAGES[@]}"; do
-    IFS='|' read -r pkg repo version_prefix <<< "$entry"
+    IFS='|' read -r pkg repo version_prefix include_prereleases <<< "$entry"
     current=$(get_current_version "$pkg")
-    get_latest_release "$repo" "$version_prefix"
+    get_latest_release "$repo" "$version_prefix" "$include_prereleases"
     latest="$latest_release_result"
-    latest_versions["$pkg"]="$latest"
 
     if [ -z "$latest" ]; then
-      echo "⚠️  $pkg: 无法获取最新版本"
-      check_failed=true
+      record_failure "$pkg: 无法获取匹配前缀 $version_prefix 的最新版本"
       continue
     fi
 
     if ! latest_clean=$(normalize_github_version "$latest" "$version_prefix"); then
-      echo "⚠️  $pkg: 上游版本格式无效: $latest"
-      check_failed=true
+      record_failure "$pkg: 上游版本格式无效: $latest"
       continue
     fi
 
@@ -234,9 +256,6 @@ if [ "${CHECK_UPDATES_ONLY:-}" != "chatgpt" ]; then
     else
       echo "🔄 $pkg: $current → $latest_clean"
       has_updates=true
-      if [ -f "$PKGS_DIR/$pkg/default.nix" ]; then
-        has_applyable_updates=true
-      fi
       updates+="$pkg: $current → $latest_clean"$'\n'
     fi
   done
@@ -275,24 +294,8 @@ if [ "${1:-}" = "--apply" ]; then
     echo "检查存在失败，未修改任何包。" >&2
     exit 1
   fi
-  if [ "${CHECK_UPDATES_ONLY:-}" != "chatgpt" ]; then
-    for entry in "${PACKAGES[@]}"; do
-      IFS='|' read -r pkg repo version_prefix <<< "$entry"
-      current=$(get_current_version "$pkg")
-      latest="${latest_versions[$pkg]:-}"
-      latest_clean=$(normalize_github_version "$latest" "$version_prefix")
-
-      if [ -z "$latest_clean" ] || [ "$current" = "$latest_clean" ]; then
-        continue
-      fi
-
-      nix_file="$PKGS_DIR/$pkg/default.nix"
-      if [ -f "$nix_file" ]; then
-        sed -i "s|version = \"$current\"|version = \"$latest_clean\"|" "$nix_file"
-        echo "📝 $pkg: $current → $latest_clean"
-      fi
-    done
-  fi
+  # GitHub 源包还需要重新计算 source/vendor hash，不能只改 version。
+  # 当前仅 ChatGPT 元数据同时提供版本和 SHA256，因而只有它可自动应用。
   if [ "$has_applyable_updates" = true ] && [ -n "$chatgpt_latest" ] && [ "$current_chatgpt" != "$chatgpt_latest" ]; then
     apply_nix_update "$PKGS_DIR/chatgpt/default.nix" "$current_chatgpt" "$chatgpt_latest" "$chatgpt_sri"
     echo "📝 chatgpt: $current_chatgpt → $chatgpt_latest (版本与 hash 已同步更新)"

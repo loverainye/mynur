@@ -40,6 +40,7 @@ jobs:
           HAS_UPDATES=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_HAS_UPDATES=' | tail -1 | cut -d= -f2 || true)
           HAS_APPLYABLE=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=' | tail -1 | cut -d= -f2 || true)
           FAILED=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_FAILED=' | tail -1 | cut -d= -f2 || true)
+          FAILURES=$(printf '%s\n' "$OUTPUT" | grep '^CHECK_UPDATES_FAILURES=' | tail -1 | cut -d= -f2- || true)
           : "${HAS_UPDATES:=false}"
           : "${HAS_APPLYABLE:=false}"
           : "${FAILED:=true}"
@@ -48,6 +49,7 @@ jobs:
             echo "has_updates=$HAS_UPDATES"
             echo "has_applyable_updates=$HAS_APPLYABLE"
             echo "failed=$FAILED"
+            echo "failures=$FAILURES"
             echo "updates<<EOF"
             echo "$UPDATES"
             echo "EOF"
@@ -100,9 +102,15 @@ jobs:
 
       - name: Post check failure
         if: steps.check.outputs.failed == 'true' || failure()
+        env:
+          FAILURES: ${{ steps.check.outputs.failures }}
         run: |
           {
             echo "## ❌ 更新检查失败"
-            echo "检查失败与发现更新分开处理，未将失败当作更新。"
+            if [ -n "$FAILURES" ]; then
+              echo "$FAILURES"
+            else
+              echo "检查步骤或更新提交失败，请展开失败步骤查看日志。"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
