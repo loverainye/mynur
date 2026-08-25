@@ -24,7 +24,7 @@
   fribidi,
   gdk-pixbuf,
   glib,
-  gnome2,
+  gtkglext,
   gnutls,
   graphite2,
   gtk3,
@@ -100,7 +100,7 @@ let
     fribidi
     gdk-pixbuf
     glib
-    gnome2.gtkglext
+    gtkglext
     gnutls
     graphite2
     gtk3

@@ -47,6 +47,8 @@ stdenv.mkDerivation {
       cat > $out/bin/${binName} << 'WRAPPER'
 ${customWrapper}
 WRAPPER
+      substituteInPlace $out/bin/${binName} \
+        --replace-fail '@out@' "$out"
       chmod +x $out/bin/${binName}
     '' else ''
       makeWrapper $out/share/${pname}/${binaryName} $out/bin/${binName}

@@ -7,6 +7,11 @@
 , python3
 }:
 
+let
+  # The 3.1.6 GitHub release does not have a matching npm tarball. Keep the
+  # newest published frontend explicit instead of disguising it as 3.1.6.
+  webDistVersion = "3.1.5";
+in
 buildNpmPackage rec {
   pname = "opencode-bridge";
   version = "3.1.6";
@@ -20,7 +25,7 @@ buildNpmPackage rec {
 
   # Prebuilt web frontend from npm tarball
   webDist = fetchurl {
-    url = "https://registry.npmjs.org/opencode-bridge/-/opencode-bridge-3.1.5.tgz";
+    url = "https://registry.npmjs.org/opencode-bridge/-/opencode-bridge-${webDistVersion}.tgz";
     hash = "sha256-wjc8nKUvqmzdl6XcEQKB0CVMy2iHbpr9Tcw3QorDFgk=";
   };
 
@@ -85,6 +90,8 @@ buildNpmPackage rec {
 
   installPhase = ''
     runHook preInstall
+
+    npm prune --omit=dev --ignore-scripts
 
     mkdir -p $out/lib/node_modules/opencode-bridge
     cp -r . $out/lib/node_modules/opencode-bridge

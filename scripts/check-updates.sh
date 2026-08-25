@@ -118,6 +118,61 @@ normalize_github_version() {
   echo "$version"
 }
 
+version_is_newer() {
+  local current="$1"
+  local candidate="$2"
+  [ "$current" = "N/A" ] && return 0
+  python3 - "$current" "$candidate" <<'PY'
+import re
+import sys
+
+
+def parse(version):
+    match = re.fullmatch(
+        r"([^0-9]*)([0-9]+(?:\.[0-9]+)*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?",
+        version,
+    )
+    if match is None:
+        raise SystemExit(f"无法比较版本: {version}")
+    prefix, core, prerelease = match.groups()
+    core_parts = tuple(int(part) for part in core.split("."))
+    prerelease_parts = None if prerelease is None else tuple(prerelease.split("."))
+    return prefix, core_parts, prerelease_parts
+
+
+def compare_identifiers(left, right):
+    for left_part, right_part in zip(left, right):
+        if left_part == right_part:
+            continue
+        left_numeric = left_part.isdigit()
+        right_numeric = right_part.isdigit()
+        if left_numeric and right_numeric:
+            return (int(left_part) > int(right_part)) - (int(left_part) < int(right_part))
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return (left_part > right_part) - (left_part < right_part)
+    return (len(left) > len(right)) - (len(left) < len(right))
+
+
+def compare(left, right):
+    left_prefix, left_core, left_pre = parse(left)
+    right_prefix, right_core, right_pre = parse(right)
+    if left_prefix != right_prefix:
+        return (left_prefix > right_prefix) - (left_prefix < right_prefix)
+    width = max(len(left_core), len(right_core))
+    left_core += (0,) * (width - len(left_core))
+    right_core += (0,) * (width - len(right_core))
+    if left_core != right_core:
+        return (left_core > right_core) - (left_core < right_core)
+    if left_pre is None or right_pre is None:
+        return (left_pre is None) - (right_pre is None)
+    return compare_identifiers(left_pre, right_pre)
+
+
+raise SystemExit(0 if compare(sys.argv[2], sys.argv[1]) > 0 else 1)
+PY
+}
+
 # 读取并严格校验官方 Debian Packages 元数据；不读取 .deb。
 load_chatgpt_metadata() {
   if [ "$chatgpt_metadata_loaded" = true ]; then
@@ -253,10 +308,12 @@ if [ "${CHECK_UPDATES_ONLY:-}" != "chatgpt" ]; then
 
     if [ "$current" = "$latest_clean" ]; then
       echo "✅ $pkg: $current (已是最新)"
-    else
+    elif version_is_newer "$current" "$latest_clean"; then
       echo "🔄 $pkg: $current → $latest_clean"
       has_updates=true
       updates+="$pkg: $current → $latest_clean"$'\n'
+    else
+      echo "✅ $pkg: $current (高于上游 $latest_clean)"
     fi
   done
 fi
@@ -265,13 +322,15 @@ current_chatgpt=$(get_current_version "chatgpt")
 if load_chatgpt_metadata; then
   if [ "$current_chatgpt" = "$chatgpt_latest" ]; then
     echo "✅ chatgpt: $current_chatgpt (已是最新)"
-  else
+  elif version_is_newer "$current_chatgpt" "$chatgpt_latest"; then
     echo "🔄 chatgpt: $current_chatgpt → $chatgpt_latest"
     has_updates=true
     if [ -f "$PKGS_DIR/chatgpt/default.nix" ]; then
       has_applyable_updates=true
     fi
     updates+="chatgpt: $current_chatgpt → $chatgpt_latest"$'\n'
+  else
+    echo "✅ chatgpt: $current_chatgpt (高于上游 $chatgpt_latest)"
   fi
 fi
 

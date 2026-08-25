@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
 
   src = fetchurl {
     url = "${baseUrl}/${version}/linux-x64/claude";
-    sha256 = "sha256-Z09h8g/zBvMQDPkgDkw2xLcCeLW+8ohFSYGblCqJyGM=";
+    sha256 = "sha256-R6Adrr95T2yGwT0Yda1uW+BicCmthgBzEWHyQBjs3ls=";
   };
 
   dontUnpack = true;

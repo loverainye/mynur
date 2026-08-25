@@ -8,47 +8,38 @@
   outputs = { self, nixpkgs }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { 
+      pkgs = import nixpkgs {
         inherit system;
         config = {
           allowUnfree = true;
         };
       };
-
-      # 所有自定义包
-      packages = {
-        codex = pkgs.callPackage ./pkgs/codex { };
-        chatgpt = pkgs.callPackage ./pkgs/chatgpt { };
-        claude-code = pkgs.callPackage ./pkgs/claude-code { };
-        opencode-cli = pkgs.callPackage ./pkgs/opencode-cli { };
-        opencode-gui = pkgs.callPackage ./pkgs/opencode-gui { };
-        mimode-cli = pkgs.callPackage ./pkgs/mimode-cli { };
-        antigravity = pkgs.callPackage ./pkgs/antigravity { };
-        antigravity-cli = pkgs.callPackage ./pkgs/antigravity-cli { };
-        qoder = pkgs.callPackage ./pkgs/qoder { };
-        qoder-cli = pkgs.callPackage ./pkgs/qoder-cli { };
-        cc-switch-cli = pkgs.callPackage ./pkgs/cc-switch-cli { };
-        cc-switch-gui = pkgs.callPackage ./pkgs/cc-switch-gui { };
-        cctui = pkgs.callPackage ./pkgs/cctui { };
-        kilo-cli = pkgs.callPackage ./pkgs/kilo-cli { };
-        oh-my-opencode = pkgs.callPackage ./pkgs/oh-my-opencode { };
-        opencode-bridge = pkgs.callPackage ./pkgs/opencode-bridge { };
-        graphify = pkgs.callPackage ./pkgs/graphify { };
-        dingtalk = pkgs.callPackage ./pkgs/dingtalk { };
-        duckdb-odbc = pkgs.callPackage ./pkgs/duckdb-odbc { };
-        warpd = pkgs.callPackage ./pkgs/warpd { };
-        rustdesk = pkgs.callPackage ./pkgs/rustdesk { };
-        v2rayn = pkgs.callPackage ./pkgs/v2rayn { };
-        daed = pkgs.callPackage ./pkgs/daed { };
-        xdg-desktop-portal-generic = pkgs.callPackage ./pkgs/xdg-desktop-portal-generic { };
-        qwen-code = pkgs.callPackage ./pkgs/qwen-code { };
-      };
+      packages = import ./. { inherit pkgs; };
+      checkUpdates = pkgs.runCommand "check-updates" {
+        nativeBuildInputs = with pkgs; [
+          bash
+          coreutils
+          gnugrep
+          python3
+        ];
+      } ''
+        bash ${self}/tests/check-updates.sh
+        touch "$out"
+      '';
     in
     {
       packages.x86_64-linux = packages;
 
-      overlays.default = final: prev: {
-        mynur = import ./. { pkgs = prev; };
+      checks.x86_64-linux = packages // {
+        check-updates = checkUpdates;
       };
+
+      apps.x86_64-linux.nix-fast-build = {
+        type = "app";
+        program = pkgs.lib.getExe pkgs.nix-fast-build;
+        meta.description = "Build all mynur checks in parallel";
+      };
+
+      overlays.default = import ./overlay.nix;
     };
 }

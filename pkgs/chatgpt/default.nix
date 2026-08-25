@@ -154,8 +154,8 @@ stdenv.mkDerivation rec {
       -o -iname '*armv7*' \
       -o -iname '*ia32*' \
     \) -delete
-    while IFS= read -r -d $'\0' native; do
-      description=$(file -b "$native")
+    while IFS= read -r -d $'\0' native \
+      && IFS= read -r -d $'\0' description; do
       case "$description" in
         *"ELF 64-bit LSB"*"x86-64"*)
           case "$description" in
@@ -164,7 +164,14 @@ stdenv.mkDerivation rec {
           ;;
         *ELF*) rm -f "$native" ;;
       esac
-    done < <(find "$out/lib/chatgpt" -type f -print0)
+    done < <(
+      find "$out/lib/chatgpt" -type f \( \
+        -perm /111 \
+        -o -iname '*.node' \
+        -o -iname '*.so' \
+        -o -iname '*.so.*' \
+      \) -print0 | xargs -0 -r file -0 -0 --
+    )
 
     chmod 755 "$out/lib/chatgpt/ChatGPT" "$out/lib/chatgpt/codex-launcher"
 
