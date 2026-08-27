@@ -5,13 +5,18 @@ set -euo pipefail
 REPO_ROOT="${CHECK_UPDATES_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 PKGS_DIR="$REPO_ROOT/pkgs"
 CHATGPT_PACKAGES_URL="https://persistent.oaistatic.com/codex-app-prod/linux/deb/dists/stable/main/binary-amd64/Packages.gz"
+CODEX_REPO="openai/codex"
+CODEX_VERSION_PREFIX="rust-v0."
+CODEX_TARGET="x86_64-unknown-linux-musl"
+CODEX_ASSET="codex-package-${CODEX_TARGET}.tar.gz"
+CODEX_CHECKSUMS_ASSET="codex-package_SHA256SUMS"
+CODEX_RELEASE_BASE_URL="https://github.com/openai/codex/releases/download"
 
 # 格式: "包名|owner/repo|当前版本前缀|是否包含预发布版本"
 # 版本前缀: GitHub release tag 通常以 v 开头 (如 v1.18.4)，但 default.nix 中 version 字段不含 v
 # antigravity 使用 Google Storage 的不透明构建路径；cctui 和 warpd 固定 Git
 # commit，三者都没有可供此脚本可靠查询的 GitHub Release，不能放进此列表。
 PACKAGES=(
-  "codex|openai/codex|rust-v0.|false"
   "claude-code|anthropics/claude-code|2.|false"
   "opencode-cli|anomalyco/opencode|1.|false"
   "opencode-gui|anomalyco/opencode|1.|false"
@@ -31,9 +36,15 @@ updates=""
 failures=""
 declare -A latest_release_cache
 latest_release_result=""
+codex_metadata_loaded=false
+codex_tag=""
+codex_latest=""
+codex_sri=""
+codex_update_available=false
 chatgpt_metadata_loaded=false
 chatgpt_latest=""
 chatgpt_sri=""
+chatgpt_update_available=false
 
 # 工作流使用这些标记，不依赖中文摘要文本判断状态。
 print_status_markers() {
@@ -50,6 +61,11 @@ record_failure() {
   check_failed=true
 }
 
+check_requested() {
+  local pkg="$1"
+  [ -z "${CHECK_UPDATES_ONLY:-}" ] || [ "$CHECK_UPDATES_ONLY" = "$pkg" ]
+}
+
 # 从 default.nix 提取当前版本
 get_current_version() {
   local pkg="$1"
@@ -59,6 +75,16 @@ get_current_version() {
     return
   fi
   grep -oP 'version\s*=\s*"\K[^"]+' "$nix_file" 2>/dev/null || echo "N/A"
+}
+
+get_current_hash() {
+  local pkg="$1"
+  local nix_file="$PKGS_DIR/$pkg/default.nix"
+  if [ ! -f "$nix_file" ]; then
+    echo "N/A"
+    return
+  fi
+  grep -oP 'hash\s*=\s*"\K[^"]+' "$nix_file" 2>/dev/null || echo "N/A"
 }
 
 # 获取 GitHub 最新 release tag
@@ -116,6 +142,92 @@ normalize_github_version() {
     return 1
   fi
   echo "$version"
+}
+
+load_codex_metadata() {
+  if [ "$codex_metadata_loaded" = true ]; then
+    return 0
+  fi
+
+  get_latest_release "$CODEX_REPO" "$CODEX_VERSION_PREFIX" false
+  codex_tag="$latest_release_result"
+  if [ -z "$codex_tag" ]; then
+    record_failure "codex: 无法获取匹配前缀 $CODEX_VERSION_PREFIX 的最新版本"
+    return 1
+  fi
+  if ! codex_latest=$(normalize_github_version "$codex_tag" "$CODEX_VERSION_PREFIX"); then
+    record_failure "codex: 上游版本格式无效: $codex_tag"
+    return 1
+  fi
+
+  local checksums_file="${CODEX_CHECKSUMS_FILE:-}"
+  local checksums=""
+  if [ -n "$checksums_file" ]; then
+    if [ ! -f "$checksums_file" ]; then
+      record_failure "codex: CODEX_CHECKSUMS_FILE 不存在: $checksums_file"
+      return 1
+    fi
+    checksums=$(<"$checksums_file")
+  elif ! checksums=$(curl -fsSL \
+    --retry 3 \
+    --retry-all-errors \
+    --connect-timeout 10 \
+    --max-time 30 \
+    "$CODEX_RELEASE_BASE_URL/$codex_tag/$CODEX_CHECKSUMS_ASSET"); then
+    record_failure "codex: 无法获取 $codex_tag 的校验清单"
+    return 1
+  fi
+
+  if ! codex_sri=$(python3 - "$CODEX_ASSET" "$checksums" <<'PY'
+import base64
+import re
+import sys
+
+asset, checksums = sys.argv[1:]
+matches = []
+for line in checksums.splitlines():
+    match = re.fullmatch(r"([0-9a-fA-F]{64})  (\S+)", line)
+    if match is not None and match.group(2) == asset:
+        matches.append(match.group(1).lower())
+if len(matches) != 1:
+    raise SystemExit(f"校验清单中 {asset} 必须恰好出现一次")
+digest = bytes.fromhex(matches[0])
+print("sha256-" + base64.b64encode(digest).decode("ascii"))
+PY
+  ); then
+    record_failure "codex: $codex_tag 的校验清单格式无效"
+    return 1
+  fi
+  codex_metadata_loaded=true
+}
+
+verify_codex_asset() {
+  local asset_url="$CODEX_RELEASE_BASE_URL/$codex_tag/$CODEX_ASSET"
+  local metadata=""
+  if ! metadata=$(nix store prefetch-file --json "$asset_url"); then
+    record_failure "codex: 无法预取 $codex_tag 的组合包"
+    return 1
+  fi
+
+  local actual_hash=""
+  if ! actual_hash=$(python3 - "$metadata" <<'PY'
+import json
+import sys
+
+metadata = json.loads(sys.argv[1])
+value = metadata.get("hash", "")
+if not isinstance(value, str) or not value.startswith("sha256-"):
+    raise SystemExit("prefetch 结果缺少 SHA256 SRI hash")
+print(value)
+PY
+  ); then
+    record_failure "codex: 组合包预取结果格式无效"
+    return 1
+  fi
+  if [ "$actual_hash" != "$codex_sri" ]; then
+    record_failure "codex: 组合包实际 hash 与校验清单不一致"
+    return 1
+  fi
 }
 
 version_is_newer() {
@@ -249,89 +361,201 @@ PY
   IFS=$'\t' read -r chatgpt_latest _ chatgpt_sri <<< "$metadata"
 }
 
-apply_nix_update() {
-  local nix_file="$1"
-  local old_version="$2"
-  local new_version="$3"
-  local new_hash="$4"
-  python3 - "$nix_file" "$old_version" "$new_version" "$new_hash" <<'PY'
+apply_nix_updates() {
+  python3 - "$@" <<'PY'
 import os
 import re
 import sys
 import tempfile
 from pathlib import Path
 
-path, old_version, new_version, new_hash = sys.argv[1:]
-text = Path(path).read_text(encoding="utf-8")
-version_old = f'version = "{old_version}"'
-version_new = f'version = "{new_version}"'
-if text.count(version_old) != 1 or text.count("hash = ") != 1:
-    raise SystemExit("Nix 文件中的版本或 hash 字段不是唯一可替换项")
-text = text.replace(version_old, version_new, 1)
-hash_match = re.search(r'(?m)^(\s*hash\s*=\s*)"[^"\n]+"', text)
-if hash_match is None:
-    raise SystemExit("Nix 文件中没有有效的 hash 字段")
-text = text[:hash_match.start()] + f'{hash_match.group(1)}"{new_hash}"' + text[hash_match.end():]
-directory = str(Path(path).parent)
-fd, temporary = tempfile.mkstemp(prefix=f".{Path(path).name}.", dir=directory, text=True)
+arguments = sys.argv[1:]
+if not arguments or len(arguments) % 4 != 0:
+    raise SystemExit("内部错误: 更新参数必须按文件、旧版本、新版本、hash 分组")
+
+
+def render(path, old_version, new_version, new_hash):
+    text = path.read_text(encoding="utf-8")
+    version_old = f'version = "{old_version}"'
+    version_new = f'version = "{new_version}"'
+    if text.count(version_old) != 1 or text.count("hash = ") != 1:
+        raise SystemExit(f"{path}: 版本或 hash 字段不是唯一可替换项")
+    text = text.replace(version_old, version_new, 1)
+    hash_match = re.search(r'(?m)^(\s*hash\s*=\s*)"[^"\n]+"', text)
+    if hash_match is None:
+        raise SystemExit(f"{path}: 没有有效的 hash 字段")
+    return (
+        text[:hash_match.start()]
+        + f'{hash_match.group(1)}"{new_hash}"'
+        + text[hash_match.end():]
+    )
+
+
+updates = []
+paths = []
+for index in range(0, len(arguments), 4):
+    path = Path(arguments[index])
+    paths.append(path)
+    updates.append((path, *arguments[index + 1:index + 4]))
+if len(set(paths)) != len(paths):
+    raise SystemExit("内部错误: 同一文件不能在一次事务中更新两次")
+
+# 先完成所有解析和临时文件写入，再替换目标，避免格式错误造成半更新。
+staged = []
+
+
+def cleanup_staged():
+    for item in staged:
+        temporary = item["temporary"]
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
 try:
-    with os.fdopen(fd, "w", encoding="utf-8") as output:
-        output.write(text)
-        output.flush()
-        os.fsync(output.fileno())
-    os.replace(temporary, path)
+    for path, old_version, new_version, new_hash in updates:
+        original = path.read_bytes()
+        mode = path.stat().st_mode
+        text = render(path, old_version, new_version, new_hash)
+        fd, temporary = tempfile.mkstemp(
+            prefix=f".{path.name}.", dir=str(path.parent), text=True
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                output.write(text)
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(temporary, mode)
+        except BaseException:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+            raise
+        staged.append({
+            "path": path,
+            "temporary": temporary,
+            "original": original,
+            "mode": mode,
+        })
 except BaseException:
-    try:
-        os.unlink(temporary)
-    except FileNotFoundError:
-        pass
+    cleanup_staged()
     raise
+
+committed = []
+try:
+    for item in staged:
+        os.replace(item["temporary"], item["path"])
+        item["temporary"] = None
+        committed.append(item)
+except BaseException as commit_error:
+    rollback_errors = []
+    for item in reversed(committed):
+        path = item["path"]
+        fd, rollback = tempfile.mkstemp(prefix=f".{path.name}.rollback.", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "wb") as output:
+                output.write(item["original"])
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(rollback, item["mode"])
+            os.replace(rollback, path)
+        except BaseException as rollback_error:
+            rollback_errors.append(f"{path}: {rollback_error}")
+            try:
+                os.unlink(rollback)
+            except FileNotFoundError:
+                pass
+    if rollback_errors:
+        raise RuntimeError(
+            "更新提交失败且回滚不完整: " + "; ".join(rollback_errors)
+        ) from commit_error
+    raise
+finally:
+    cleanup_staged()
 PY
 }
 
-if [ "${CHECK_UPDATES_ONLY:-}" != "chatgpt" ]; then
-  for entry in "${PACKAGES[@]}"; do
-    IFS='|' read -r pkg repo version_prefix include_prereleases <<< "$entry"
-    current=$(get_current_version "$pkg")
-    get_latest_release "$repo" "$version_prefix" "$include_prereleases"
-    latest="$latest_release_result"
-
-    if [ -z "$latest" ]; then
-      record_failure "$pkg: 无法获取匹配前缀 $version_prefix 的最新版本"
-      continue
-    fi
-
-    if ! latest_clean=$(normalize_github_version "$latest" "$version_prefix"); then
-      record_failure "$pkg: 上游版本格式无效: $latest"
-      continue
-    fi
-
-    if [ "$current" = "$latest_clean" ]; then
-      echo "✅ $pkg: $current (已是最新)"
-    elif version_is_newer "$current" "$latest_clean"; then
-      echo "🔄 $pkg: $current → $latest_clean"
+current_codex=""
+if check_requested "codex"; then
+  current_codex=$(get_current_version "codex")
+  if load_codex_metadata; then
+    current_codex_hash=$(get_current_hash "codex")
+    if [ "$current_codex" = "$codex_latest" ] && [ "$current_codex_hash" = "$codex_sri" ]; then
+      echo "✅ codex: $current_codex (版本与 hash 均为最新)"
+    elif [ "$current_codex" = "$codex_latest" ]; then
+      echo "🔄 codex: $current_codex (hash 需要修正)"
       has_updates=true
-      updates+="$pkg: $current → $latest_clean"$'\n'
+      codex_update_available=true
+      updates+="codex: $current_codex hash → release hash"$'\n'
+    elif version_is_newer "$current_codex" "$codex_latest"; then
+      echo "🔄 codex: $current_codex → $codex_latest"
+      has_updates=true
+      codex_update_available=true
+      updates+="codex: $current_codex → $codex_latest"$'\n'
     else
-      echo "✅ $pkg: $current (高于上游 $latest_clean)"
+      echo "✅ codex: $current_codex (高于上游 $codex_latest)"
     fi
-  done
-fi
-
-current_chatgpt=$(get_current_version "chatgpt")
-if load_chatgpt_metadata; then
-  if [ "$current_chatgpt" = "$chatgpt_latest" ]; then
-    echo "✅ chatgpt: $current_chatgpt (已是最新)"
-  elif version_is_newer "$current_chatgpt" "$chatgpt_latest"; then
-    echo "🔄 chatgpt: $current_chatgpt → $chatgpt_latest"
-    has_updates=true
-    if [ -f "$PKGS_DIR/chatgpt/default.nix" ]; then
+    if [ "$codex_update_available" = true ] && [ -f "$PKGS_DIR/codex/default.nix" ]; then
       has_applyable_updates=true
     fi
-    updates+="chatgpt: $current_chatgpt → $chatgpt_latest"$'\n'
-  else
-    echo "✅ chatgpt: $current_chatgpt (高于上游 $chatgpt_latest)"
   fi
+fi
+
+for entry in "${PACKAGES[@]}"; do
+  IFS='|' read -r pkg repo version_prefix include_prereleases <<< "$entry"
+  if ! check_requested "$pkg"; then
+    continue
+  fi
+  current=$(get_current_version "$pkg")
+  get_latest_release "$repo" "$version_prefix" "$include_prereleases"
+  latest="$latest_release_result"
+
+  if [ -z "$latest" ]; then
+    record_failure "$pkg: 无法获取匹配前缀 $version_prefix 的最新版本"
+    continue
+  fi
+
+  if ! latest_clean=$(normalize_github_version "$latest" "$version_prefix"); then
+    record_failure "$pkg: 上游版本格式无效: $latest"
+    continue
+  fi
+
+  if [ "$current" = "$latest_clean" ]; then
+    echo "✅ $pkg: $current (已是最新)"
+  elif version_is_newer "$current" "$latest_clean"; then
+    echo "🔄 $pkg: $current → $latest_clean"
+    has_updates=true
+    updates+="$pkg: $current → $latest_clean"$'\n'
+  else
+    echo "✅ $pkg: $current (高于上游 $latest_clean)"
+  fi
+done
+
+current_chatgpt=""
+if check_requested "chatgpt"; then
+  current_chatgpt=$(get_current_version "chatgpt")
+  if load_chatgpt_metadata; then
+    if [ "$current_chatgpt" = "$chatgpt_latest" ]; then
+      echo "✅ chatgpt: $current_chatgpt (已是最新)"
+    elif version_is_newer "$current_chatgpt" "$chatgpt_latest"; then
+      echo "🔄 chatgpt: $current_chatgpt → $chatgpt_latest"
+      has_updates=true
+      chatgpt_update_available=true
+      if [ -f "$PKGS_DIR/chatgpt/default.nix" ]; then
+        has_applyable_updates=true
+      fi
+      updates+="chatgpt: $current_chatgpt → $chatgpt_latest"$'\n'
+    else
+      echo "✅ chatgpt: $current_chatgpt (高于上游 $chatgpt_latest)"
+    fi
+  fi
+fi
+
+if [ "${1:-}" = "--apply" ] && [ "$codex_update_available" = true ]; then
+  verify_codex_asset || true
 fi
 
 echo ""
@@ -345,7 +569,7 @@ else
 fi
 print_status_markers
 
-# --apply 模式: 只应用已成功获取且同时包含版本和 hash 的更新
+# --apply 模式: 只应用已完成版本、hash 和下载校验的更新
 if [ "${1:-}" = "--apply" ]; then
   echo ""
   echo "=== 应用更新 ==="
@@ -353,10 +577,34 @@ if [ "${1:-}" = "--apply" ]; then
     echo "检查存在失败，未修改任何包。" >&2
     exit 1
   fi
-  # GitHub 源包还需要重新计算 source/vendor hash，不能只改 version。
-  # 当前仅 ChatGPT 元数据同时提供版本和 SHA256，因而只有它可自动应用。
-  if [ "$has_applyable_updates" = true ] && [ -n "$chatgpt_latest" ] && [ "$current_chatgpt" != "$chatgpt_latest" ]; then
-    apply_nix_update "$PKGS_DIR/chatgpt/default.nix" "$current_chatgpt" "$chatgpt_latest" "$chatgpt_sri"
+  apply_arguments=()
+  if [ "$codex_update_available" = true ]; then
+    apply_arguments+=(
+      "$PKGS_DIR/codex/default.nix"
+      "$current_codex"
+      "$codex_latest"
+      "$codex_sri"
+    )
+  fi
+  if [ "$chatgpt_update_available" = true ]; then
+    apply_arguments+=(
+      "$PKGS_DIR/chatgpt/default.nix"
+      "$current_chatgpt"
+      "$chatgpt_latest"
+      "$chatgpt_sri"
+    )
+  fi
+  if [ "${#apply_arguments[@]}" -gt 0 ]; then
+    apply_nix_updates "${apply_arguments[@]}"
+  fi
+  if [ "$codex_update_available" = true ]; then
+    if [ "$current_codex" = "$codex_latest" ]; then
+      echo "📝 codex: $current_codex (hash 已同步修正)"
+    else
+      echo "📝 codex: $current_codex → $codex_latest (版本与 hash 已同步更新)"
+    fi
+  fi
+  if [ "$chatgpt_update_available" = true ]; then
     echo "📝 chatgpt: $current_chatgpt → $chatgpt_latest (版本与 hash 已同步更新)"
   fi
 fi

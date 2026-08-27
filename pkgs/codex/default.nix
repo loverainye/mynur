@@ -1,44 +1,78 @@
-{ stdenv
-, fetchurl
-, autoPatchelfHook
-, makeBinaryWrapper
-, ripgrep
-, bubblewrap
-, lib
+{
+  stdenv,
+  fetchurl,
+  autoPatchelfHook,
+  makeBinaryWrapper,
+  ripgrep,
+  bubblewrap,
+  ncurses,
+  jq,
+  lib,
 }:
 
+let
+  target = "x86_64-unknown-linux-musl";
+in
 stdenv.mkDerivation rec {
   pname = "codex";
-  version = "rust-v0.147.0";
+  version = "rust-v0.150.1";
 
   src = fetchurl {
-    url = "https://github.com/openai/codex/releases/download/${version}/codex-x86_64-unknown-linux-musl.tar.gz";
-    sha256 = "sha256-Akbi53ODTgfw+1JJ7W660S5FkeYI+Me7l91qlpBUTDY=";
+    url = "https://github.com/openai/codex/releases/download/${version}/codex-package-${target}.tar.gz";
+    hash = "sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc=";
   };
 
-  # Tarball contains a single file (not a directory) so we need to extract manually
   dontUnpack = true;
 
   nativeBuildInputs = [
     autoPatchelfHook
     makeBinaryWrapper
+    jq
   ];
+
+  buildInputs = [ ncurses ];
 
   installPhase = ''
     runHook preInstall
 
-    # Extract the tarball manually since dontUnpack
-    tar xzf $src
-
-    mkdir -p $out/bin
-    cp codex-x86_64-unknown-linux-musl $out/bin/codex
-    chmod +x $out/bin/codex
+    mkdir -p "$out"
+    tar xzf "$src" -C "$out"
+    chmod +x "$out/bin/codex" "$out/bin/codex-code-mode-host"
 
     wrapProgram $out/bin/codex --prefix PATH : ${
-      lib.makeBinPath [ ripgrep bubblewrap ]
-    }
+      lib.makeBinPath [
+        ripgrep
+        bubblewrap
+      ]
+    }:$out/codex-path
 
     runHook postInstall
+  '';
+
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+
+    export HOME="$TMPDIR"
+    test -x "$out/bin/codex"
+    test -x "$out/bin/codex-code-mode-host"
+    test "$("$out/bin/codex" --version)" = "codex-cli ${lib.removePrefix "rust-v" version}"
+    "$out/bin/codex-code-mode-host" --help | grep -Fq "Usage: codex-code-mode-host"
+    "$out/codex-path/rg" --version >/dev/null
+    "$out/codex-resources/bwrap" --version >/dev/null
+    "$out/codex-resources/zsh/bin/zsh" --version >/dev/null
+    jq -e \
+      --arg version "${lib.removePrefix "rust-v" version}" \
+      --arg target "${target}" \
+      '.layoutVersion == 1
+        and .version == $version
+        and .target == $target
+        and .entrypoint == "bin/codex"
+        and .resourcesDir == "codex-resources"
+        and .pathDir == "codex-path"' \
+      "$out/codex-package.json" >/dev/null
+
+    runHook postInstallCheck
   '';
 
   meta = {

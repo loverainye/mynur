@@ -18,6 +18,8 @@ on:
 jobs:
   check-updates:
     runs-on: ubuntu-latest
+    outputs:
+      build_ref: ${{ steps.build-ref.outputs.ref }}
     permissions:
       contents: write
     
@@ -83,6 +85,10 @@ jobs:
           git add pkgs
           git commit -m "chore: auto-update packages $(date +%Y-%m-%d)"
           git push origin HEAD:main
+
+      - name: Select revision for cache build
+        id: build-ref
+        run: echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       
       - name: Post update summary
         if: steps.check.outputs.has_updates == 'true'
@@ -114,3 +120,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
+
+  build-and-cache:
+    needs: check-updates
+    if: needs.check-updates.result == 'success' && (github.event_name == 'schedule' || github.event.inputs.apply == 'true')
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.check-updates.outputs.build_ref }}
+    secrets: inherit
