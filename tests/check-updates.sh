@@ -133,7 +133,7 @@ grep -q 'version = "rust-v0.150.1"' "$repo_root/pkgs/codex/default.nix"
 atomic_packages="$tmp_dir/chatgpt-atomic-Packages"
 printf '%s\n' \
   'Package: chatgpt' \
-  'Version: 26.821.0' \
+  'Version: 99.0.0' \
   'Architecture: amd64' \
   'SHA256: 2222222222222222222222222222222222222222222222222222222222222222' \
   > "$atomic_packages"
