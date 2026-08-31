@@ -26,4 +26,5 @@
   daed = pkgs.callPackage ./pkgs/daed { };
   xdg-desktop-portal-generic = pkgs.callPackage ./pkgs/xdg-desktop-portal-generic { };
   qwen-code = pkgs.callPackage ./pkgs/qwen-code { };
+  fcitx5-vinput = pkgs.callPackage ./pkgs/fcitx5-vinput { };
 }
