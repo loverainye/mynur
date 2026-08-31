@@ -237,6 +237,7 @@ stdenv.mkDerivation (finalAttrs: {
       --unset WAYLAND_DISPLAY \
       --set QT_QPA_PLATFORM "xcb" \
       --set QT_AUTO_SCREEN_SCALE_FACTOR 1 \
+      --set GSETTINGS_SCHEMA_DIR "${glib.getSchemaPath gtk3}" \
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath libraries}"
 
     # App Menu
