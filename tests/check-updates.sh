@@ -5,6 +5,17 @@ repo_root=$(cd "$(dirname "$0")/.." && pwd)
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 
+workflow="$repo_root/.github/workflows/check-updates.yml"
+checkout_line=$(grep -n 'uses: actions/checkout@' "$workflow" | head -1 | cut -d: -f1)
+install_nix_line=$(grep -n 'uses: cachix/install-nix-action@' "$workflow" | head -1 | cut -d: -f1)
+check_line=$(grep -n 'name: Check for updates' "$workflow" | head -1 | cut -d: -f1)
+if [ -z "$checkout_line" ] || [ -z "$install_nix_line" ] || [ -z "$check_line" ] \
+  || [ "$checkout_line" -ge "$install_nix_line" ] \
+  || [ "$install_nix_line" -ge "$check_line" ]; then
+  echo "check-updates workflow 必须在 checkout 后、更新检查前安装 Nix" >&2
+  exit 1
+fi
+
 mkdir -p "$tmp_dir/bin"
 {
 printf '#!%s\n' "$(command -v bash)"
