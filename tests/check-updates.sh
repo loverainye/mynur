@@ -62,7 +62,8 @@ codex_checksums="$repo_root/tests/fixtures/codex-package_SHA256SUMS"
 # Codex 包会被定时 workflow 自动更新，测试必须使用固定版本作为基线。
 codex_fixture_root="$tmp_dir/codex-fixture"
 mkdir -p "$codex_fixture_root"
-cp -a "$repo_root/pkgs" "$codex_fixture_root/"
+cp -r "$repo_root/pkgs" "$codex_fixture_root/"
+chmod -R u+rwX "$codex_fixture_root/pkgs"
 sed -i \
   -e 's/version = "rust-v[^"]*"/version = "rust-v0.150.1"/' \
   -e 's/hash = "[^"]*"/hash = "sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc="/' \
