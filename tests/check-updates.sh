@@ -59,7 +59,17 @@ chmod +x "$tmp_dir/bin/nix"
 
 codex_checksums="$repo_root/tests/fixtures/codex-package_SHA256SUMS"
 
+# Codex 包会被定时 workflow 自动更新，测试必须使用固定版本作为基线。
+codex_fixture_root="$tmp_dir/codex-fixture"
+mkdir -p "$codex_fixture_root"
+cp -a "$repo_root/pkgs" "$codex_fixture_root/"
+sed -i \
+  -e 's/version = "rust-v[^"]*"/version = "rust-v0.150.1"/' \
+  -e 's/hash = "[^"]*"/hash = "sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc="/' \
+  "$codex_fixture_root/pkgs/codex/default.nix"
+
 output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   CHATGPT_PACKAGES_FILE="$repo_root/tests/fixtures/chatgpt-Packages" \
   bash "$repo_root/scripts/check-updates.sh")
@@ -80,6 +90,7 @@ if grep -q 'antigravity: 无法获取' <<< "$output"; then
 fi
 
 stable_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   MOCK_OH_MY_VERSION=v5.0.0 \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   CHATGPT_PACKAGES_FILE="$repo_root/tests/fixtures/chatgpt-Packages" \
@@ -89,6 +100,7 @@ grep -q '^🔄 oh-my-opencode: 5.0.0-beta.7 → 5.0.0$' <<< "$stable_output"
 set +e
 failure_output=$(PATH="$tmp_dir/bin:$PATH" \
   MOCK_FAIL_REPO=openai/codex \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   CHATGPT_PACKAGES_FILE="$repo_root/tests/fixtures/chatgpt-Packages" \
   bash "$repo_root/scripts/check-updates.sh" 2>&1)
@@ -103,6 +115,7 @@ grep -q '^CHECK_UPDATES_FAILURES=codex: 无法获取匹配前缀 rust-v0\. 的�
 
 codex_only_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=codex \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   bash "$repo_root/scripts/check-updates.sh")
 grep -q '^✅ codex:' <<< "$codex_only_output"
@@ -117,7 +130,7 @@ printf '%s  %s\n' \
   'codex-package-x86_64-unknown-linux-musl.tar.gz' > "$update_checksums"
 apply_root="$tmp_dir/apply-root"
 mkdir -p "$apply_root/pkgs/codex"
-cp "$repo_root/pkgs/codex/default.nix" "$apply_root/pkgs/codex/default.nix"
+cp "$codex_fixture_root/pkgs/codex/default.nix" "$apply_root/pkgs/codex/default.nix"
 apply_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=codex \
   CHECK_UPDATES_REPO_ROOT="$apply_root" \
@@ -128,7 +141,7 @@ grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$apply_output"
 grep -q 'version = "rust-v0.151.0"' "$apply_root/pkgs/codex/default.nix"
 grep -q 'hash = "sha256-ERERERERERERERERERERERERERERERERERERERERERE="' \
   "$apply_root/pkgs/codex/default.nix"
-grep -q 'version = "rust-v0.150.1"' "$repo_root/pkgs/codex/default.nix"
+grep -q 'version = "rust-v0.150.1"' "$codex_fixture_root/pkgs/codex/default.nix"
 
 atomic_packages="$tmp_dir/chatgpt-atomic-Packages"
 printf '%s\n' \
@@ -139,7 +152,7 @@ printf '%s\n' \
   > "$atomic_packages"
 atomic_root="$tmp_dir/atomic-root"
 mkdir -p "$atomic_root/pkgs/codex" "$atomic_root/pkgs/chatgpt"
-cp "$repo_root/pkgs/codex/default.nix" "$atomic_root/pkgs/codex/default.nix"
+cp "$codex_fixture_root/pkgs/codex/default.nix" "$atomic_root/pkgs/codex/default.nix"
 cp "$repo_root/pkgs/chatgpt/default.nix" "$atomic_root/pkgs/chatgpt/default.nix"
 sed -i 's/^    hash = /    sha256 = /' "$atomic_root/pkgs/chatgpt/default.nix"
 cp "$atomic_root/pkgs/codex/default.nix" "$tmp_dir/atomic-codex-before.nix"
@@ -167,7 +180,7 @@ fi
 
 wrong_hash_root="$tmp_dir/wrong-hash-root"
 mkdir -p "$wrong_hash_root/pkgs/codex"
-cp "$repo_root/pkgs/codex/default.nix" "$wrong_hash_root/pkgs/codex/default.nix"
+cp "$codex_fixture_root/pkgs/codex/default.nix" "$wrong_hash_root/pkgs/codex/default.nix"
 sed -i \
   's#sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc=#sha256-ERERERERERERERERERERERERERERERERERERERERERE=#' \
   "$wrong_hash_root/pkgs/codex/default.nix"
@@ -196,7 +209,7 @@ grep -q '^CHECK_UPDATES_FAILURES=codex: rust-v0.150.1 的校验清单格式无�
 
 prefetch_root="$tmp_dir/prefetch-root"
 mkdir -p "$prefetch_root/pkgs/codex"
-cp "$repo_root/pkgs/codex/default.nix" "$prefetch_root/pkgs/codex/default.nix"
+cp "$codex_fixture_root/pkgs/codex/default.nix" "$prefetch_root/pkgs/codex/default.nix"
 cp "$prefetch_root/pkgs/codex/default.nix" "$tmp_dir/prefetch-before.nix"
 set +e
 prefetch_output=$(PATH="$tmp_dir/bin:$PATH" \
