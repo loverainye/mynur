@@ -11,6 +11,7 @@ CODEX_TARGET="x86_64-unknown-linux-musl"
 CODEX_ASSET="codex-package-${CODEX_TARGET}.tar.gz"
 CODEX_CHECKSUMS_ASSET="codex-package_SHA256SUMS"
 CODEX_RELEASE_BASE_URL="https://github.com/openai/codex/releases/download"
+WORKBUDDY_UPDATE_URL="https://copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb"
 
 # 格式: "包名|owner/repo|当前版本前缀|是否包含预发布版本"
 # 版本前缀: GitHub release tag 通常以 v 开头 (如 v1.18.4)，但 default.nix 中 version 字段不含 v
@@ -45,6 +46,12 @@ chatgpt_metadata_loaded=false
 chatgpt_latest=""
 chatgpt_sri=""
 chatgpt_update_available=false
+workbuddy_metadata_loaded=false
+workbuddy_latest=""
+workbuddy_url=""
+workbuddy_sri=""
+workbuddy_apply_sri=""
+workbuddy_update_available=false
 
 # 工作流使用这些标记，不依赖中文摘要文本判断状态。
 print_status_markers() {
@@ -361,6 +368,100 @@ PY
   IFS=$'\t' read -r chatgpt_latest _ chatgpt_sri <<< "$metadata"
 }
 
+# 读取并严格校验 WorkBuddy 官方更新接口；不读取 .deb。
+load_workbuddy_metadata() {
+  if [ "$workbuddy_metadata_loaded" = true ]; then
+    return 0
+  fi
+  workbuddy_metadata_loaded=true
+
+  local metadata_file="${WORKBUDDY_METADATA_FILE:-}"
+  local metadata=""
+  if [ -n "$metadata_file" ]; then
+    if [ ! -f "$metadata_file" ]; then
+      record_failure "workbuddy: WORKBUDDY_METADATA_FILE 不存在: $metadata_file"
+      return 1
+    fi
+    metadata=$(<"$metadata_file")
+  elif ! metadata=$(curl -fsSL \
+    --retry 3 \
+    --retry-all-errors \
+    --connect-timeout 10 \
+    --max-time 30 \
+    "$WORKBUDDY_UPDATE_URL"); then
+    record_failure "workbuddy: 无法获取官方更新元数据"
+    return 1
+  fi
+
+  local parsed_metadata=""
+  if ! parsed_metadata=$(python3 - "$metadata" <<'PY'
+import base64
+import json
+import re
+import sys
+from urllib.parse import urlparse
+
+try:
+    metadata = json.loads(sys.argv[1])
+except (TypeError, json.JSONDecodeError) as error:
+    raise SystemExit(f"JSON 格式无效: {error}")
+if not isinstance(metadata, dict):
+    raise SystemExit("顶层 JSON 必须是对象")
+
+version = metadata.get("version")
+url = metadata.get("url")
+sha256 = metadata.get("sha256hash")
+if not isinstance(version, str) or not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version):
+    raise SystemExit("version 不是点分数字版本")
+if not isinstance(url, str):
+    raise SystemExit("url 必须是字符串")
+parsed = urlparse(url)
+if parsed.scheme != "https" or parsed.netloc != "download.codebuddy.cn" or not parsed.path.endswith(".deb"):
+    raise SystemExit("url 不是受信任的 WorkBuddy deb 地址")
+if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+    raise SystemExit("sha256hash 不是 64 位十六进制值")
+
+digest = bytes.fromhex(sha256)
+print(f"{version}\t{url}\tsha256-" + base64.b64encode(digest).decode("ascii"))
+PY
+  ); then
+    record_failure "workbuddy: 更新元数据校验失败"
+    return 1
+  fi
+  IFS=$'\t' read -r workbuddy_latest workbuddy_url workbuddy_sri <<< "$parsed_metadata"
+  workbuddy_apply_sri="$workbuddy_sri"
+}
+
+verify_workbuddy_asset() {
+  local metadata=""
+  if ! metadata=$(nix store prefetch-file --json "$workbuddy_url"); then
+    record_failure "workbuddy: 无法预取 $workbuddy_latest 的 deb"
+    return 1
+  fi
+
+  local actual_hash=""
+  if ! actual_hash=$(python3 - "$metadata" <<'PY'
+import json
+import re
+import sys
+
+metadata = json.loads(sys.argv[1])
+value = metadata.get("hash", "")
+if not isinstance(value, str) or not re.fullmatch(r"sha256-[A-Za-z0-9+/]{43}=", value):
+    raise SystemExit("prefetch 结果缺少 SHA256 SRI hash")
+print(value)
+PY
+  ); then
+    record_failure "workbuddy: deb 预取结果格式无效"
+    return 1
+  fi
+
+  workbuddy_apply_sri="$actual_hash"
+  if [ "$actual_hash" != "$workbuddy_sri" ]; then
+    echo "⚠️  workbuddy: 接口 hash 与 CDN 实际 hash 不一致，应用实际 hash"
+  fi
+}
+
 apply_nix_updates() {
   python3 - "$@" <<'PY'
 import os
@@ -370,11 +471,11 @@ import tempfile
 from pathlib import Path
 
 arguments = sys.argv[1:]
-if not arguments or len(arguments) % 4 != 0:
-    raise SystemExit("内部错误: 更新参数必须按文件、旧版本、新版本、hash 分组")
+if not arguments or len(arguments) % 5 != 0:
+    raise SystemExit("内部错误: 更新参数必须按文件、旧版本、新版本、hash、URL 分组")
 
 
-def render(path, old_version, new_version, new_hash):
+def render(path, old_version, new_version, new_hash, new_url):
     text = path.read_text(encoding="utf-8")
     version_old = f'version = "{old_version}"'
     version_new = f'version = "{new_version}"'
@@ -384,19 +485,30 @@ def render(path, old_version, new_version, new_hash):
     hash_match = re.search(r'(?m)^(\s*hash\s*=\s*)"[^"\n]+"', text)
     if hash_match is None:
         raise SystemExit(f"{path}: 没有有效的 hash 字段")
-    return (
+    text = (
         text[:hash_match.start()]
         + f'{hash_match.group(1)}"{new_hash}"'
         + text[hash_match.end():]
     )
+    if new_url:
+        url_matches = list(re.finditer(r'(?m)^(\s*url\s*=\s*)"[^"\n]+"', text))
+        if len(url_matches) != 1:
+            raise SystemExit(f"{path}: URL 字段不是唯一可替换项")
+        url_match = url_matches[0]
+        text = (
+            text[:url_match.start()]
+            + f'{url_match.group(1)}"{new_url}"'
+            + text[url_match.end():]
+        )
+    return text
 
 
 updates = []
 paths = []
-for index in range(0, len(arguments), 4):
+for index in range(0, len(arguments), 5):
     path = Path(arguments[index])
     paths.append(path)
-    updates.append((path, *arguments[index + 1:index + 4]))
+    updates.append((path, *arguments[index + 1:index + 5]))
 if len(set(paths)) != len(paths):
     raise SystemExit("内部错误: 同一文件不能在一次事务中更新两次")
 
@@ -415,10 +527,10 @@ def cleanup_staged():
 
 
 try:
-    for path, old_version, new_version, new_hash in updates:
+    for path, old_version, new_version, new_hash, new_url in updates:
         original = path.read_bytes()
         mode = path.stat().st_mode
-        text = render(path, old_version, new_version, new_hash)
+        text = render(path, old_version, new_version, new_hash, new_url)
         fd, temporary = tempfile.mkstemp(
             prefix=f".{path.name}.", dir=str(path.parent), text=True
         )
@@ -554,8 +666,31 @@ if check_requested "chatgpt"; then
   fi
 fi
 
+current_workbuddy=""
+if check_requested "workbuddy"; then
+  current_workbuddy=$(get_current_version "workbuddy")
+  if load_workbuddy_metadata; then
+    if [ "$current_workbuddy" = "$workbuddy_latest" ]; then
+      echo "✅ workbuddy: $current_workbuddy (已是最新)"
+    elif version_is_newer "$current_workbuddy" "$workbuddy_latest"; then
+      echo "🔄 workbuddy: $current_workbuddy → $workbuddy_latest"
+      has_updates=true
+      workbuddy_update_available=true
+      if [ -f "$PKGS_DIR/workbuddy/default.nix" ]; then
+        has_applyable_updates=true
+      fi
+      updates+="workbuddy: $current_workbuddy → $workbuddy_latest"$'\n'
+    else
+      echo "✅ workbuddy: $current_workbuddy (高于上游 $workbuddy_latest)"
+    fi
+  fi
+fi
+
 if [ "${1:-}" = "--apply" ] && [ "$codex_update_available" = true ]; then
   verify_codex_asset || true
+fi
+if [ "${1:-}" = "--apply" ] && [ "$workbuddy_update_available" = true ]; then
+  verify_workbuddy_asset || true
 fi
 
 echo ""
@@ -584,6 +719,7 @@ if [ "${1:-}" = "--apply" ]; then
       "$current_codex"
       "$codex_latest"
       "$codex_sri"
+      ""
     )
   fi
   if [ "$chatgpt_update_available" = true ]; then
@@ -592,6 +728,16 @@ if [ "${1:-}" = "--apply" ]; then
       "$current_chatgpt"
       "$chatgpt_latest"
       "$chatgpt_sri"
+      ""
+    )
+  fi
+  if [ "$workbuddy_update_available" = true ]; then
+    apply_arguments+=(
+      "$PKGS_DIR/workbuddy/default.nix"
+      "$current_workbuddy"
+      "$workbuddy_latest"
+      "$workbuddy_apply_sri"
+      "$workbuddy_url"
     )
   fi
   if [ "${#apply_arguments[@]}" -gt 0 ]; then
@@ -606,6 +752,9 @@ if [ "${1:-}" = "--apply" ]; then
   fi
   if [ "$chatgpt_update_available" = true ]; then
     echo "📝 chatgpt: $current_chatgpt → $chatgpt_latest (版本与 hash 已同步更新)"
+  fi
+  if [ "$workbuddy_update_available" = true ]; then
+    echo "📝 workbuddy: $current_workbuddy → $workbuddy_latest (版本、hash 与 URL 已同步更新)"
   fi
 fi
 

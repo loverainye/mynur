@@ -39,7 +39,19 @@ chmod +x "$tmp_dir/bin/gh"
 {
 printf '#!%s\n' "$(command -v bash)"
 cat <<'EOF'
-printf '[]\n'
+set -euo pipefail
+url=""
+for argument in "$@"; do
+  url="$argument"
+done
+case "$url" in
+  *copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb)
+    printf '%s\n' '{"version":"5.5.3.37748631","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.3.37748631-104760a2.deb","sha256hash":"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329"}'
+    ;;
+  *)
+    printf '[]\n'
+    ;;
+esac
 EOF
 } > "$tmp_dir/bin/curl"
 chmod +x "$tmp_dir/bin/curl"
@@ -48,8 +60,13 @@ printf '#!%s\n' "$(command -v bash)"
 cat <<'EOF'
 set -euo pipefail
 if [ "${1:-}" = "store" ] && [ "${2:-}" = "prefetch-file" ]; then
-  printf '{"hash":"%s","storePath":"/nix/store/mock-codex-package"}\n' \
-    "${MOCK_CODEX_PREFETCH_HASH:-sha256-ERERERERERERERERERERERERERERERERERERERERERE=}"
+  url="$4"
+  if [[ "$url" == *download.codebuddy.cn/workbuddy/* ]]; then
+    hash="${MOCK_WORKBUDDY_PREFETCH_HASH:-sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI=}"
+  else
+    hash="${MOCK_CODEX_PREFETCH_HASH:-sha256-ERERERERERERERERERERERERERERERERERERERERERE=}"
+  fi
+  printf '{"hash":"%s","storePath":"/nix/store/mock-package"}\n' "$hash"
   exit 0
 fi
 exit 1
@@ -58,6 +75,11 @@ EOF
 chmod +x "$tmp_dir/bin/nix"
 
 codex_checksums="$repo_root/tests/fixtures/codex-package_SHA256SUMS"
+workbuddy_metadata="$tmp_dir/workbuddy-update.json"
+printf '%s\n' \
+  '{"version":"5.5.3.37748631","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.3.37748631-104760a2.deb","sha256hash":"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329"}' \
+  > "$workbuddy_metadata"
+export WORKBUDDY_METADATA_FILE="$workbuddy_metadata"
 
 # Codex 包会被定时 workflow 自动更新，测试必须使用固定版本作为基线。
 codex_fixture_root="$tmp_dir/codex-fixture"
@@ -81,6 +103,7 @@ grep -q '^✅ codex: rust-v0.150.1 (版本与 hash 均为最新)$' <<< "$output"
 grep -q '^🔄 kilo-cli: .* → 7.4.22$' <<< "$output"
 grep -q '^🔄 oh-my-opencode: .* → 5.0.0-beta.10$' <<< "$output"
 grep -q '^✅ opencode-cli: 1.18.18 (高于上游 1.18.17)$' <<< "$output"
+grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$output"
 if grep -q '^🔄 opencode-cli:' <<< "$output"; then
   echo "不应把较旧的上游版本当作更新" >&2
   exit 1
@@ -124,6 +147,22 @@ if grep -Eq '^(✅|🔄|⚠️) (chatgpt|claude-code):' <<< "$codex_only_output"
   echo "CHECK_UPDATES_ONLY=codex 不应检查其他包" >&2
   exit 1
 fi
+
+workbuddy_only_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=workbuddy \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
+  bash "$repo_root/scripts/check-updates.sh")
+grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$workbuddy_only_output"
+if grep -Eq '^(✅|🔄|⚠️) (codex|chatgpt|claude-code):' <<< "$workbuddy_only_output"; then
+  echo "CHECK_UPDATES_ONLY=workbuddy 不应检查其他包" >&2
+  exit 1
+fi
+workbuddy_curl_output=$(env -u WORKBUDDY_METADATA_FILE \
+  PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=workbuddy \
+  CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
+  bash "$repo_root/scripts/check-updates.sh")
+grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$workbuddy_curl_output"
 
 update_checksums="$tmp_dir/codex-update-SHA256SUMS"
 printf '%s  %s\n' \
@@ -228,5 +267,28 @@ if [ "$prefetch_status" -eq 0 ]; then
 fi
 grep -q '^CHECK_UPDATES_FAILURES=codex: 组合包实际 hash 与校验清单不一致;' <<< "$prefetch_output"
 cmp "$tmp_dir/prefetch-before.nix" "$prefetch_root/pkgs/codex/default.nix"
+
+workbuddy_update_metadata="$tmp_dir/workbuddy-new.json"
+printf '%s\n' \
+  '{"version":"5.5.4.12345678","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.4.12345678-abcdef12.deb","sha256hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' \
+  > "$workbuddy_update_metadata"
+workbuddy_apply_root="$tmp_dir/workbuddy-apply-root"
+mkdir -p "$workbuddy_apply_root/pkgs/workbuddy"
+cp "$codex_fixture_root/pkgs/workbuddy/default.nix" "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
+cp "$workbuddy_apply_root/pkgs/workbuddy/default.nix" "$tmp_dir/workbuddy-before.nix"
+workbuddy_apply_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=workbuddy \
+  CHECK_UPDATES_REPO_ROOT="$workbuddy_apply_root" \
+  WORKBUDDY_METADATA_FILE="$workbuddy_update_metadata" \
+  MOCK_WORKBUDDY_PREFETCH_HASH=sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI= \
+  bash "$repo_root/scripts/check-updates.sh" --apply)
+grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$workbuddy_apply_output"
+grep -q '^⚠️  workbuddy: 接口 hash 与 CDN 实际 hash 不一致，应用实际 hash$' <<< "$workbuddy_apply_output"
+grep -q 'version = "5.5.4.12345678"' "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
+grep -q 'url = "https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.4.12345678-abcdef12.deb"' \
+  "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
+grep -q 'hash = "sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI="' \
+  "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
+cmp "$tmp_dir/workbuddy-before.nix" "$codex_fixture_root/pkgs/workbuddy/default.nix"
 
 echo "check-updates tests passed"

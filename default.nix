@@ -11,6 +11,7 @@
   antigravity-cli = pkgs.callPackage ./pkgs/antigravity-cli { };
   qoder = pkgs.callPackage ./pkgs/qoder { };
   qoder-cli = pkgs.callPackage ./pkgs/qoder-cli { };
+  workbuddy = pkgs.callPackage ./pkgs/workbuddy { };
   cc-switch-cli = pkgs.callPackage ./pkgs/cc-switch-cli { };
   cc-switch-gui = pkgs.callPackage ./pkgs/cc-switch-gui { };
   cctui = pkgs.callPackage ./pkgs/cctui { };
