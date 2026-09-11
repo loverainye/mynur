@@ -11,6 +11,9 @@ CODEX_TARGET="x86_64-unknown-linux-musl"
 CODEX_ASSET="codex-package-${CODEX_TARGET}.tar.gz"
 CODEX_CHECKSUMS_ASSET="codex-package_SHA256SUMS"
 CODEX_RELEASE_BASE_URL="https://github.com/openai/codex/releases/download"
+CC_SWITCH_GUI_REPO="farion1231/cc-switch"
+CC_SWITCH_GUI_VERSION_PREFIX="3."
+CC_SWITCH_GUI_RELEASE_BASE_URL="https://github.com/farion1231/cc-switch/releases/download"
 WORKBUDDY_UPDATE_URL="https://copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb"
 
 # 格式: "包名|owner/repo|当前版本前缀|是否包含预发布版本"
@@ -24,7 +27,6 @@ PACKAGES=(
   "mimode-cli|XiaomiMiMo/MiMo-Code|0.|false"
   "antigravity-cli|google-antigravity/antigravity-cli|1.|false"
   "cc-switch-cli|SaladDay/cc-switch-cli|5.|false"
-  "cc-switch-gui|farion1231/cc-switch|3.|false"
   "kilo-cli|Kilo-Org/kilocode|7.|false"
   "oh-my-opencode|code-yeongyu/oh-my-openagent|5.|true"
   "rustdesk|rustdesk/rustdesk|1.|false"
@@ -46,6 +48,12 @@ chatgpt_metadata_loaded=false
 chatgpt_latest=""
 chatgpt_sri=""
 chatgpt_update_available=false
+cc_switch_gui_metadata_loaded=false
+cc_switch_gui_tag=""
+cc_switch_gui_latest=""
+cc_switch_gui_url=""
+cc_switch_gui_sri=""
+cc_switch_gui_update_available=false
 workbuddy_metadata_loaded=false
 workbuddy_latest=""
 workbuddy_url=""
@@ -233,6 +241,52 @@ PY
   fi
   if [ "$actual_hash" != "$codex_sri" ]; then
     record_failure "codex: 组合包实际 hash 与校验清单不一致"
+    return 1
+  fi
+}
+
+load_cc_switch_gui_metadata() {
+  if [ "$cc_switch_gui_metadata_loaded" = true ]; then
+    return 0
+  fi
+
+  get_latest_release "$CC_SWITCH_GUI_REPO" "$CC_SWITCH_GUI_VERSION_PREFIX" false
+  cc_switch_gui_tag="$latest_release_result"
+  if [ -z "$cc_switch_gui_tag" ]; then
+    record_failure "cc-switch-gui: 无法获取匹配前缀 $CC_SWITCH_GUI_VERSION_PREFIX 的最新版本"
+    return 1
+  fi
+  if ! cc_switch_gui_latest=$(normalize_github_version \
+    "$cc_switch_gui_tag" \
+    "$CC_SWITCH_GUI_VERSION_PREFIX"); then
+    record_failure "cc-switch-gui: 上游版本格式无效: $cc_switch_gui_tag"
+    return 1
+  fi
+
+  cc_switch_gui_url="$CC_SWITCH_GUI_RELEASE_BASE_URL/$cc_switch_gui_tag/CC-Switch-v${cc_switch_gui_latest}-Linux-x86_64.deb"
+  cc_switch_gui_metadata_loaded=true
+}
+
+verify_cc_switch_gui_asset() {
+  local metadata=""
+  if ! metadata=$(nix store prefetch-file --json "$cc_switch_gui_url"); then
+    record_failure "cc-switch-gui: 无法预取 $cc_switch_gui_latest 的 x86_64 deb"
+    return 1
+  fi
+
+  if ! cc_switch_gui_sri=$(python3 - "$metadata" <<'PY'
+import json
+import re
+import sys
+
+metadata = json.loads(sys.argv[1])
+value = metadata.get("hash", "")
+if not isinstance(value, str) or not re.fullmatch(r"sha256-[A-Za-z0-9+/]{43}=", value):
+    raise SystemExit("prefetch 结果缺少 SHA256 SRI hash")
+print(value)
+PY
+  ); then
+    record_failure "cc-switch-gui: deb 预取结果格式无效"
     return 1
   fi
 }
@@ -646,6 +700,26 @@ for entry in "${PACKAGES[@]}"; do
   fi
 done
 
+current_cc_switch_gui=""
+if check_requested "cc-switch-gui"; then
+  current_cc_switch_gui=$(get_current_version "cc-switch-gui")
+  if load_cc_switch_gui_metadata; then
+    if [ "$current_cc_switch_gui" = "$cc_switch_gui_latest" ]; then
+      echo "✅ cc-switch-gui: $current_cc_switch_gui (已是最新)"
+    elif version_is_newer "$current_cc_switch_gui" "$cc_switch_gui_latest"; then
+      echo "🔄 cc-switch-gui: $current_cc_switch_gui → $cc_switch_gui_latest"
+      has_updates=true
+      updates+="cc-switch-gui: $current_cc_switch_gui → $cc_switch_gui_latest"$'\n'
+      if [ -f "$PKGS_DIR/cc-switch-gui/default.nix" ]; then
+        cc_switch_gui_update_available=true
+        has_applyable_updates=true
+      fi
+    else
+      echo "✅ cc-switch-gui: $current_cc_switch_gui (高于上游 $cc_switch_gui_latest)"
+    fi
+  fi
+fi
+
 current_chatgpt=""
 if check_requested "chatgpt"; then
   current_chatgpt=$(get_current_version "chatgpt")
@@ -689,6 +763,9 @@ fi
 if [ "${1:-}" = "--apply" ] && [ "$codex_update_available" = true ]; then
   verify_codex_asset || true
 fi
+if [ "${1:-}" = "--apply" ] && [ "$cc_switch_gui_update_available" = true ]; then
+  verify_cc_switch_gui_asset || true
+fi
 if [ "${1:-}" = "--apply" ] && [ "$workbuddy_update_available" = true ]; then
   verify_workbuddy_asset || true
 fi
@@ -731,6 +808,15 @@ if [ "${1:-}" = "--apply" ]; then
       ""
     )
   fi
+  if [ "$cc_switch_gui_update_available" = true ]; then
+    apply_arguments+=(
+      "$PKGS_DIR/cc-switch-gui/default.nix"
+      "$current_cc_switch_gui"
+      "$cc_switch_gui_latest"
+      "$cc_switch_gui_sri"
+      ""
+    )
+  fi
   if [ "$workbuddy_update_available" = true ]; then
     apply_arguments+=(
       "$PKGS_DIR/workbuddy/default.nix"
@@ -752,6 +838,9 @@ if [ "${1:-}" = "--apply" ]; then
   fi
   if [ "$chatgpt_update_available" = true ]; then
     echo "📝 chatgpt: $current_chatgpt → $chatgpt_latest (版本与 hash 已同步更新)"
+  fi
+  if [ "$cc_switch_gui_update_available" = true ]; then
+    echo "📝 cc-switch-gui: $current_cc_switch_gui → $cc_switch_gui_latest (版本与 hash 已同步更新)"
   fi
   if [ "$workbuddy_update_available" = true ]; then
     echo "📝 workbuddy: $current_workbuddy → $workbuddy_latest (版本、hash 与 URL 已同步更新)"

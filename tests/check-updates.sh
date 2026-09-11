@@ -5,6 +5,26 @@ repo_root=$(cd "$(dirname "$0")/.." && pwd)
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 
+codex_fixture_version="rust-v0.150.1"
+codex_update_version="rust-v0.151.0"
+export MOCK_CODEX_VERSION="$codex_fixture_version"
+cc_switch_gui_fixture_version="3.19.2"
+cc_switch_gui_update_version="3.20.2"
+cc_switch_gui_fixture_hash="sha256-5TDzWxKePeNNqkvpoG5YdkLljQpodPdVkT000BQmd/I="
+cc_switch_gui_update_hash="sha256-7wJhvZ6E17ebA5P8xdvJFmSrG3cdIv0Qjbya2g97P8c="
+workbuddy_update_version="5.5.4.12345678"
+workbuddy_update_url="https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-${workbuddy_update_version}-abcdef12.deb"
+
+current_cc_switch_gui_version=$(grep -oP 'version\s*=\s*"\K[^"]+' \
+  "$repo_root/pkgs/cc-switch-gui/default.nix")
+export MOCK_CC_SWITCH_GUI_VERSION="v$current_cc_switch_gui_version"
+current_workbuddy_version=$(grep -oP 'version\s*=\s*"\K[^"]+' \
+  "$repo_root/pkgs/workbuddy/default.nix")
+current_workbuddy_url=$(grep -oP 'url\s*=\s*"\K[^"]+' \
+  "$repo_root/pkgs/workbuddy/default.nix" \
+  | sed "s/\${version}/$current_workbuddy_version/")
+export MOCK_WORKBUDDY_METADATA="{\"version\":\"$current_workbuddy_version\",\"url\":\"$current_workbuddy_url\",\"sha256hash\":\"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329\"}"
+
 mkdir -p "$tmp_dir/bin"
 {
 printf '#!%s\n' "$(command -v bash)"
@@ -22,13 +42,13 @@ if [ "${MOCK_FAIL_REPO:-}" = "$repo" ]; then
   exit 0
 fi
 case "$repo" in
-  openai/codex) printf '%s\n' "${MOCK_CODEX_VERSION:-rust-v0.150.1}" ;;
+  openai/codex) printf '%s\n' "$MOCK_CODEX_VERSION" ;;
   anthropics/claude-code) printf '%s\n' v2.1.235 ;;
   anomalyco/opencode) printf '%s\n' v1.18.17 ;;
   XiaomiMiMo/MiMo-Code) printf '%s\n' v0.1.12 ;;
   google-antigravity/antigravity-cli) printf '%s\n' 1.1.14 ;;
   SaladDay/cc-switch-cli) printf '%s\n' v5.10.2 ;;
-  farion1231/cc-switch) printf '%s\n' v3.20.0 ;;
+  farion1231/cc-switch) printf '%s\n' "$MOCK_CC_SWITCH_GUI_VERSION" ;;
   Kilo-Org/kilocode) printf '%s\n' jetbrains/v7.0.16 v7.4.22 ;;
   code-yeongyu/oh-my-openagent) printf '%s\n' "${MOCK_OH_MY_VERSION:-v5.0.0-beta.10}" ;;
   rustdesk/rustdesk) printf '%s\n' 1.4.9 ;;
@@ -46,7 +66,7 @@ for argument in "$@"; do
 done
 case "$url" in
   *copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb)
-    printf '%s\n' '{"version":"5.5.3.37748631","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.3.37748631-104760a2.deb","sha256hash":"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329"}'
+    printf '%s\n' "$MOCK_WORKBUDDY_METADATA"
     ;;
   *)
     printf '[]\n'
@@ -63,6 +83,16 @@ if [ "${1:-}" = "store" ] && [ "${2:-}" = "prefetch-file" ]; then
   url="$4"
   if [[ "$url" == *download.codebuddy.cn/workbuddy/* ]]; then
     hash="${MOCK_WORKBUDDY_PREFETCH_HASH:-sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI=}"
+  elif [[ "$url" == *farion1231/cc-switch/*Linux-x86_64.deb ]]; then
+    if [ "${MOCK_CC_SWITCH_GUI_PREFETCH_FAIL:-false}" = true ]; then
+      exit 1
+    fi
+    if [ -n "${MOCK_CC_SWITCH_GUI_EXPECTED_URL:-}" ] \
+      && [ "$url" != "$MOCK_CC_SWITCH_GUI_EXPECTED_URL" ]; then
+      echo "unexpected cc-switch-gui URL: $url" >&2
+      exit 1
+    fi
+    hash="${MOCK_CC_SWITCH_GUI_PREFETCH_HASH:-sha256-7wJhvZ6E17ebA5P8xdvJFmSrG3cdIv0Qjbya2g97P8c=}"
   else
     hash="${MOCK_CODEX_PREFETCH_HASH:-sha256-ERERERERERERERERERERERERERERERERERERERERERE=}"
   fi
@@ -76,9 +106,7 @@ chmod +x "$tmp_dir/bin/nix"
 
 codex_checksums="$repo_root/tests/fixtures/codex-package_SHA256SUMS"
 workbuddy_metadata="$tmp_dir/workbuddy-update.json"
-printf '%s\n' \
-  '{"version":"5.5.3.37748631","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.3.37748631-104760a2.deb","sha256hash":"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329"}' \
-  > "$workbuddy_metadata"
+printf '%s\n' "$MOCK_WORKBUDDY_METADATA" > "$workbuddy_metadata"
 export WORKBUDDY_METADATA_FILE="$workbuddy_metadata"
 
 # Codex 包会被定时 workflow 自动更新，测试必须使用固定版本作为基线。
@@ -87,23 +115,25 @@ mkdir -p "$codex_fixture_root"
 cp -r "$repo_root/pkgs" "$codex_fixture_root/"
 chmod -R u+rwX "$codex_fixture_root/pkgs"
 sed -i \
-  -e 's/version = "rust-v[^"]*"/version = "rust-v0.150.1"/' \
+  -e "s/version = \"rust-v[^\"]*\"/version = \"$codex_fixture_version\"/" \
   -e 's/hash = "[^"]*"/hash = "sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc="/' \
   "$codex_fixture_root/pkgs/codex/default.nix"
 
 output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
+  MOCK_CODEX_VERSION="$codex_fixture_version" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   CHATGPT_PACKAGES_FILE="$repo_root/tests/fixtures/chatgpt-Packages" \
   bash "$repo_root/scripts/check-updates.sh")
 
 grep -q '^CHECK_UPDATES_FAILED=false$' <<< "$output"
 grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=false$' <<< "$output"
-grep -q '^✅ codex: rust-v0.150.1 (版本与 hash 均为最新)$' <<< "$output"
+grep -Fq "✅ codex: $codex_fixture_version (版本与 hash 均为最新)" <<< "$output"
 grep -q '^🔄 kilo-cli: .* → 7.4.22$' <<< "$output"
 grep -q '^🔄 oh-my-opencode: .* → 5.0.0-beta.10$' <<< "$output"
 grep -q '^✅ opencode-cli: 1.18.18 (高于上游 1.18.17)$' <<< "$output"
-grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$output"
+grep -Fq "✅ cc-switch-gui: $current_cc_switch_gui_version (已是最新)" <<< "$output"
+grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" <<< "$output"
 if grep -q '^🔄 opencode-cli:' <<< "$output"; then
   echo "不应把较旧的上游版本当作更新" >&2
   exit 1
@@ -124,6 +154,7 @@ grep -q '^🔄 oh-my-opencode: 5.0.0-beta.7 → 5.0.0$' <<< "$stable_output"
 set +e
 failure_output=$(PATH="$tmp_dir/bin:$PATH" \
   MOCK_FAIL_REPO=openai/codex \
+  MOCK_CODEX_VERSION="$codex_fixture_version" \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   CHATGPT_PACKAGES_FILE="$repo_root/tests/fixtures/chatgpt-Packages" \
@@ -139,6 +170,7 @@ grep -q '^CHECK_UPDATES_FAILURES=codex: 无法获取匹配前缀 rust-v0\. 的�
 
 codex_only_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=codex \
+  MOCK_CODEX_VERSION="$codex_fixture_version" \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   bash "$repo_root/scripts/check-updates.sh")
@@ -152,7 +184,8 @@ workbuddy_only_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=workbuddy \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   bash "$repo_root/scripts/check-updates.sh")
-grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$workbuddy_only_output"
+grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" \
+  <<< "$workbuddy_only_output"
 if grep -Eq '^(✅|🔄|⚠️) (codex|chatgpt|claude-code):' <<< "$workbuddy_only_output"; then
   echo "CHECK_UPDATES_ONLY=workbuddy 不应检查其他包" >&2
   exit 1
@@ -162,7 +195,58 @@ workbuddy_curl_output=$(env -u WORKBUDDY_METADATA_FILE \
   CHECK_UPDATES_ONLY=workbuddy \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   bash "$repo_root/scripts/check-updates.sh")
-grep -q '^✅ workbuddy: 5.5.3.37748631 (已是最新)$' <<< "$workbuddy_curl_output"
+grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" \
+  <<< "$workbuddy_curl_output"
+
+cc_switch_gui_root="$tmp_dir/cc-switch-gui-root"
+mkdir -p "$cc_switch_gui_root/pkgs/cc-switch-gui"
+cp "$repo_root/pkgs/cc-switch-gui/default.nix" \
+  "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
+sed -i \
+  -e "s/version = \"[^\"]*\"/version = \"$cc_switch_gui_fixture_version\"/" \
+  -e "s#hash = \"sha256-[^\"]*\"#hash = \"$cc_switch_gui_fixture_hash\"#" \
+  "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
+cp "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix" \
+  "$tmp_dir/cc-switch-gui-before.nix"
+cc_switch_gui_url="https://github.com/farion1231/cc-switch/releases/download/v${cc_switch_gui_update_version}/CC-Switch-v${cc_switch_gui_update_version}-Linux-x86_64.deb"
+cc_switch_gui_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=cc-switch-gui \
+  CHECK_UPDATES_REPO_ROOT="$cc_switch_gui_root" \
+  MOCK_CC_SWITCH_GUI_VERSION="v$cc_switch_gui_update_version" \
+  MOCK_CC_SWITCH_GUI_EXPECTED_URL="$cc_switch_gui_url" \
+  MOCK_CC_SWITCH_GUI_PREFETCH_HASH="$cc_switch_gui_update_hash" \
+  bash "$repo_root/scripts/check-updates.sh" --apply)
+grep -Fq "🔄 cc-switch-gui: $cc_switch_gui_fixture_version → $cc_switch_gui_update_version" \
+  <<< "$cc_switch_gui_output"
+grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$cc_switch_gui_output"
+grep -Fq "📝 cc-switch-gui: $cc_switch_gui_fixture_version → $cc_switch_gui_update_version (版本与 hash 已同步更新)" \
+  <<< "$cc_switch_gui_output"
+grep -Fq "version = \"$cc_switch_gui_update_version\"" \
+  "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
+grep -Fq "hash = \"$cc_switch_gui_update_hash\"" \
+  "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
+
+cc_switch_gui_failure_root="$tmp_dir/cc-switch-gui-failure-root"
+mkdir -p "$cc_switch_gui_failure_root/pkgs/cc-switch-gui"
+cp "$tmp_dir/cc-switch-gui-before.nix" \
+  "$cc_switch_gui_failure_root/pkgs/cc-switch-gui/default.nix"
+set +e
+cc_switch_gui_failure_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=cc-switch-gui \
+  CHECK_UPDATES_REPO_ROOT="$cc_switch_gui_failure_root" \
+  MOCK_CC_SWITCH_GUI_VERSION="v$cc_switch_gui_update_version" \
+  MOCK_CC_SWITCH_GUI_PREFETCH_HASH=sha256-invalid \
+  bash "$repo_root/scripts/check-updates.sh" --apply 2>&1)
+cc_switch_gui_failure_status=$?
+set -e
+if [ "$cc_switch_gui_failure_status" -eq 0 ]; then
+  echo "cc-switch-gui 预取结果无效时脚本应返回非零状态" >&2
+  exit 1
+fi
+grep -q '^CHECK_UPDATES_FAILURES=cc-switch-gui: deb 预取结果格式无效;' \
+  <<< "$cc_switch_gui_failure_output"
+cmp "$tmp_dir/cc-switch-gui-before.nix" \
+  "$cc_switch_gui_failure_root/pkgs/cc-switch-gui/default.nix"
 
 update_checksums="$tmp_dir/codex-update-SHA256SUMS"
 printf '%s  %s\n' \
@@ -175,13 +259,13 @@ apply_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=codex \
   CHECK_UPDATES_REPO_ROOT="$apply_root" \
   CODEX_CHECKSUMS_FILE="$update_checksums" \
-  MOCK_CODEX_VERSION=rust-v0.151.0 \
+  MOCK_CODEX_VERSION="$codex_update_version" \
   bash "$repo_root/scripts/check-updates.sh" --apply)
 grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$apply_output"
-grep -q 'version = "rust-v0.151.0"' "$apply_root/pkgs/codex/default.nix"
+grep -Fq "version = \"$codex_update_version\"" "$apply_root/pkgs/codex/default.nix"
 grep -q 'hash = "sha256-ERERERERERERERERERERERERERERERERERERERERERE="' \
   "$apply_root/pkgs/codex/default.nix"
-grep -q 'version = "rust-v0.150.1"' "$codex_fixture_root/pkgs/codex/default.nix"
+grep -Fq "version = \"$codex_fixture_version\"" "$codex_fixture_root/pkgs/codex/default.nix"
 
 atomic_packages="$tmp_dir/chatgpt-atomic-Packages"
 printf '%s\n' \
@@ -202,7 +286,7 @@ atomic_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_REPO_ROOT="$atomic_root" \
   CODEX_CHECKSUMS_FILE="$update_checksums" \
   CHATGPT_PACKAGES_FILE="$atomic_packages" \
-  MOCK_CODEX_VERSION=rust-v0.151.0 \
+  MOCK_CODEX_VERSION="$codex_update_version" \
   bash "$repo_root/scripts/check-updates.sh" --apply 2>&1)
 atomic_status=$?
 set -e
@@ -229,7 +313,7 @@ wrong_hash_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_REPO_ROOT="$wrong_hash_root" \
   CODEX_CHECKSUMS_FILE="$codex_checksums" \
   bash "$repo_root/scripts/check-updates.sh")
-grep -q '^🔄 codex: rust-v0.150.1 (hash 需要修正)$' <<< "$wrong_hash_output"
+grep -Fq "🔄 codex: $codex_fixture_version (hash 需要修正)" <<< "$wrong_hash_output"
 grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$wrong_hash_output"
 
 invalid_checksums="$tmp_dir/codex-invalid-SHA256SUMS"
@@ -245,7 +329,8 @@ if [ "$invalid_status" -eq 0 ]; then
   echo "Codex 校验清单无效时脚本应返回非零状态" >&2
   exit 1
 fi
-grep -q '^CHECK_UPDATES_FAILURES=codex: rust-v0.150.1 的校验清单格式无效;' <<< "$invalid_output"
+grep -Fq "CHECK_UPDATES_FAILURES=codex: $codex_fixture_version 的校验清单格式无效;" \
+  <<< "$invalid_output"
 
 prefetch_root="$tmp_dir/prefetch-root"
 mkdir -p "$prefetch_root/pkgs/codex"
@@ -256,7 +341,7 @@ prefetch_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=codex \
   CHECK_UPDATES_REPO_ROOT="$prefetch_root" \
   CODEX_CHECKSUMS_FILE="$update_checksums" \
-  MOCK_CODEX_VERSION=rust-v0.151.0 \
+  MOCK_CODEX_VERSION="$codex_update_version" \
   MOCK_CODEX_PREFETCH_HASH=sha256-mismatch \
   bash "$repo_root/scripts/check-updates.sh" --apply 2>&1)
 prefetch_status=$?
@@ -270,7 +355,7 @@ cmp "$tmp_dir/prefetch-before.nix" "$prefetch_root/pkgs/codex/default.nix"
 
 workbuddy_update_metadata="$tmp_dir/workbuddy-new.json"
 printf '%s\n' \
-  '{"version":"5.5.4.12345678","url":"https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.4.12345678-abcdef12.deb","sha256hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}' \
+  "{\"version\":\"$workbuddy_update_version\",\"url\":\"$workbuddy_update_url\",\"sha256hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}" \
   > "$workbuddy_update_metadata"
 workbuddy_apply_root="$tmp_dir/workbuddy-apply-root"
 mkdir -p "$workbuddy_apply_root/pkgs/workbuddy"
@@ -284,8 +369,9 @@ workbuddy_apply_output=$(PATH="$tmp_dir/bin:$PATH" \
   bash "$repo_root/scripts/check-updates.sh" --apply)
 grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$workbuddy_apply_output"
 grep -q '^⚠️  workbuddy: 接口 hash 与 CDN 实际 hash 不一致，应用实际 hash$' <<< "$workbuddy_apply_output"
-grep -q 'version = "5.5.4.12345678"' "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
-grep -q 'url = "https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.5.4.12345678-abcdef12.deb"' \
+grep -Fq "version = \"$workbuddy_update_version\"" \
+  "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
+grep -Fq "url = \"$workbuddy_update_url\"" \
   "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
 grep -q 'hash = "sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI="' \
   "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
