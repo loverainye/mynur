@@ -12,18 +12,16 @@ cc_switch_gui_fixture_version="3.19.2"
 cc_switch_gui_update_version="3.20.2"
 cc_switch_gui_fixture_hash="sha256-5TDzWxKePeNNqkvpoG5YdkLljQpodPdVkT000BQmd/I="
 cc_switch_gui_update_hash="sha256-7wJhvZ6E17ebA5P8xdvJFmSrG3cdIv0Qjbya2g97P8c="
+workbuddy_fixture_version="5.5.3.37748631"
+workbuddy_fixture_url="https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-${workbuddy_fixture_version}-104760a2.deb"
+workbuddy_fixture_hash="sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI="
 workbuddy_update_version="5.5.4.12345678"
 workbuddy_update_url="https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-${workbuddy_update_version}-abcdef12.deb"
 
 current_cc_switch_gui_version=$(grep -oP 'version\s*=\s*"\K[^"]+' \
   "$repo_root/pkgs/cc-switch-gui/default.nix")
 export MOCK_CC_SWITCH_GUI_VERSION="v$current_cc_switch_gui_version"
-current_workbuddy_version=$(grep -oP 'version\s*=\s*"\K[^"]+' \
-  "$repo_root/pkgs/workbuddy/default.nix")
-current_workbuddy_url=$(grep -oP 'url\s*=\s*"\K[^"]+' \
-  "$repo_root/pkgs/workbuddy/default.nix" \
-  | sed "s/\${version}/$current_workbuddy_version/")
-export MOCK_WORKBUDDY_METADATA="{\"version\":\"$current_workbuddy_version\",\"url\":\"$current_workbuddy_url\",\"sha256hash\":\"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329\"}"
+export MOCK_WORKBUDDY_METADATA="{\"version\":\"$workbuddy_fixture_version\",\"url\":\"$workbuddy_fixture_url\",\"sha256hash\":\"f645111736fecccdcd8aedd36248f65dd48e10bad40f9788651487e4da262329\"}"
 
 mkdir -p "$tmp_dir/bin"
 {
@@ -118,6 +116,11 @@ sed -i \
   -e "s/version = \"rust-v[^\"]*\"/version = \"$codex_fixture_version\"/" \
   -e 's/hash = "[^"]*"/hash = "sha256-AKunBPAp9twNlIvkB6dW4Ml8yEATL9aRNTssawpQWxc="/' \
   "$codex_fixture_root/pkgs/codex/default.nix"
+sed -i \
+  -e "s/version = \"[^\"]*\"/version = \"$workbuddy_fixture_version\"/" \
+  -e "s#url = \"[^\"]*\"#url = \"$workbuddy_fixture_url\"#" \
+  -e "s#hash = \"sha256-[^\"]*\"#hash = \"$workbuddy_fixture_hash\"#" \
+  "$codex_fixture_root/pkgs/workbuddy/default.nix"
 
 output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
@@ -133,7 +136,7 @@ grep -q '^🔄 kilo-cli: .* → 7.4.22$' <<< "$output"
 grep -q '^🔄 oh-my-opencode: .* → 5.0.0-beta.10$' <<< "$output"
 grep -q '^✅ opencode-cli: 1.18.18 (高于上游 1.18.17)$' <<< "$output"
 grep -Fq "✅ cc-switch-gui: $current_cc_switch_gui_version (已是最新)" <<< "$output"
-grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" <<< "$output"
+grep -Fq "✅ workbuddy: $workbuddy_fixture_version (已是最新)" <<< "$output"
 if grep -q '^🔄 opencode-cli:' <<< "$output"; then
   echo "不应把较旧的上游版本当作更新" >&2
   exit 1
@@ -184,7 +187,7 @@ workbuddy_only_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=workbuddy \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   bash "$repo_root/scripts/check-updates.sh")
-grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" \
+grep -Fq "✅ workbuddy: $workbuddy_fixture_version (已是最新)" \
   <<< "$workbuddy_only_output"
 if grep -Eq '^(✅|🔄|⚠️) (codex|chatgpt|claude-code):' <<< "$workbuddy_only_output"; then
   echo "CHECK_UPDATES_ONLY=workbuddy 不应检查其他包" >&2
@@ -195,7 +198,7 @@ workbuddy_curl_output=$(env -u WORKBUDDY_METADATA_FILE \
   CHECK_UPDATES_ONLY=workbuddy \
   CHECK_UPDATES_REPO_ROOT="$codex_fixture_root" \
   bash "$repo_root/scripts/check-updates.sh")
-grep -Fq "✅ workbuddy: $current_workbuddy_version (已是最新)" \
+grep -Fq "✅ workbuddy: $workbuddy_fixture_version (已是最新)" \
   <<< "$workbuddy_curl_output"
 
 cc_switch_gui_root="$tmp_dir/cc-switch-gui-root"
@@ -365,7 +368,7 @@ workbuddy_apply_output=$(PATH="$tmp_dir/bin:$PATH" \
   CHECK_UPDATES_ONLY=workbuddy \
   CHECK_UPDATES_REPO_ROOT="$workbuddy_apply_root" \
   WORKBUDDY_METADATA_FILE="$workbuddy_update_metadata" \
-  MOCK_WORKBUDDY_PREFETCH_HASH=sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI= \
+  MOCK_WORKBUDDY_PREFETCH_HASH="$workbuddy_fixture_hash" \
   bash "$repo_root/scripts/check-updates.sh" --apply)
 grep -q '^CHECK_UPDATES_HAS_APPLYABLE_UPDATES=true$' <<< "$workbuddy_apply_output"
 grep -q '^⚠️  workbuddy: 接口 hash 与 CDN 实际 hash 不一致，应用实际 hash$' <<< "$workbuddy_apply_output"
@@ -373,7 +376,7 @@ grep -Fq "version = \"$workbuddy_update_version\"" \
   "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
 grep -Fq "url = \"$workbuddy_update_url\"" \
   "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
-grep -q 'hash = "sha256-xdtfJpVhgiybCsFokec7kAVtrEoTQ2lwADberpJ3sGI="' \
+grep -Fq "hash = \"$workbuddy_fixture_hash\"" \
   "$workbuddy_apply_root/pkgs/workbuddy/default.nix"
 cmp "$tmp_dir/workbuddy-before.nix" "$codex_fixture_root/pkgs/workbuddy/default.nix"
 
