@@ -15,6 +15,9 @@
         };
       };
       packages = import ./. { inherit pkgs; };
+      # The upstream license forbids redistributing the published artifacts,
+      # so this package must not be uploaded to the public Cachix cache.
+      cacheablePackages = builtins.removeAttrs packages [ "wechatpay-dev-cli" ];
       checkUpdates = pkgs.runCommand "check-updates" {
         nativeBuildInputs = with pkgs; [
           bash
@@ -30,7 +33,7 @@
     {
       packages.x86_64-linux = packages;
 
-      checks.x86_64-linux = packages // {
+      checks.x86_64-linux = cacheablePackages // {
         check-updates = checkUpdates;
       };
 
