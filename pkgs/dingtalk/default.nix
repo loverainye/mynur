@@ -161,11 +161,11 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "dingtalk";
-  version = "com.alibabainc.dingtalk_8.2.8.260904001";
+  version = "com.alibabainc.dingtalk_8.3.1.260917001";
 
   src = fetchurl {
-    url = "https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_8.2.8.260904001_amd64.deb";
-    hash = "sha256-XMuDn54wSUmD+oqHwC0DtuaRXRMX9TfhfQjNiXrHULA=";
+    url = "https://dtapp-pub.dingtalk.com/dingtalk-desktop/xc_dingtalk_update/linux_deb/Release/com.alibabainc.dingtalk_8.3.1.260917001_amd64.deb";
+    hash = "sha256-9OLYO2e0dAKj9XVxNSYqDkuku7ACurbfLTyCwOzSnnk=";
   };
 
   nativeBuildInputs = [
