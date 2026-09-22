@@ -51,11 +51,11 @@
 
 stdenv.mkDerivation rec {
   pname = "chatgpt";
-  version = "26.915.31945";
+  version = "26.917.51856";
 
   src = fetchurl {
     url = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/pool/main/c/chatgpt/chatgpt_${version}_amd64.deb";
-    hash = "sha256-0nqcApGc/khNzF80WEueqf0NemXGncyHK1vc+g77WYM=";
+    hash = "sha256-SiPHe2+yfM9l+K+X7YxKnd2QHNduzsSUzoOFbw+TbYw=";
   };
 
   nativeBuildInputs = [
