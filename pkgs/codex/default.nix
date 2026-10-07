@@ -15,11 +15,11 @@ let
 in
 stdenv.mkDerivation rec {
   pname = "codex";
-  version = "rust-v0.160.1";
+  version = "rust-v0.161.0";
 
   src = fetchurl {
     url = "https://github.com/openai/codex/releases/download/${version}/codex-package-${target}.tar.gz";
-    hash = "sha256-NAgBVlkGpwKPa6qpq2hTrdrvIh8AFqFBenwf/dlsIfA=";
+    hash = "sha256-BNirnby53w7fPGfcpQcqN0ur/fdiqbxK5kmuFAuOLPA=";
   };
 
   dontUnpack = true;
