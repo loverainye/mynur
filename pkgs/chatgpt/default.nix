@@ -184,6 +184,35 @@ stdenv.mkDerivation rec {
     sed -i -E 's|^Exec=.*$|Exec=chatgpt %U|' "$out/share/applications/chatgpt.desktop"
   '';
 
+  # The browser-control plugin copies files from the application bundle and
+  # then modifies them. Nix store files are always read-only, so launch from
+  # a user-writable copy of the bundle to let plugin/bootstrap registration
+  # create browser-service.mjs and the native-messaging manifest.
+  postFixup = ''
+    mv "$out/bin/chatgpt" "$out/bin/chatgpt-store"
+    cat > "$out/bin/chatgpt" <<'CHATGPT_WRAPPER'
+    #!${stdenv.shell}
+    set -euo pipefail
+
+    data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
+    runtime_root="$data_home/chatgpt/nix-runtime-${version}"
+    runtime_app="$runtime_root/chatgpt"
+    if [ ! -x "$runtime_app/codex-launcher" ]; then
+      mkdir -p "$runtime_root"
+      temporary="$runtime_root/.chatgpt-$$"
+      rm -rf "$temporary"
+      cp -a --no-preserve=mode,ownership "@STORE_APP@" "$temporary"
+      chmod -R u+rwX "$temporary"
+      rm -rf "$runtime_app"
+      mv "$temporary" "$runtime_app"
+    fi
+
+    exec "$runtime_app/codex-launcher" "$@"
+    CHATGPT_WRAPPER
+    sed -i "s|@STORE_APP@|$out/lib/chatgpt|" "$out/bin/chatgpt"
+    chmod 755 "$out/bin/chatgpt"
+  '';
+
   meta = {
     description = "Official ChatGPT desktop application for Linux";
     homepage = "https://chatgpt.com/";
