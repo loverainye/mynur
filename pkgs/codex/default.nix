@@ -61,9 +61,8 @@ stdenv.mkDerivation rec {
     "$out/codex-path/rg" --version >/dev/null
     "$out/codex-resources/bwrap" --version >/dev/null
     # Recent upstream bundles no longer include zsh.
-    if [ -e "$out/codex-resources/zsh/bin/zsh" ]; then
+    [ ! -e "$out/codex-resources/zsh/bin/zsh" ] || \
       "$out/codex-resources/zsh/bin/zsh" --version >/dev/null
-    fi
     jq -e \
       --arg version "${lib.removePrefix "rust-v" version}" \
       --arg target "${target}" \
