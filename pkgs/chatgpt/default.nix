@@ -197,11 +197,14 @@ stdenv.mkDerivation rec {
     data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
     runtime_root="$data_home/chatgpt/nix-runtime-${version}"
     runtime_app="$runtime_root/chatgpt"
-    if [ ! -x "$runtime_app/codex-launcher" ]; then
+    if [ ! -x "$runtime_app/codex-launcher" ] \
+      || [ ! -x "$runtime_app/ChatGPT" ] \
+      || [ ! -x "$runtime_app/browser_crashpad_handler" ]; then
       mkdir -p "$runtime_root"
       temporary="$runtime_root/.chatgpt-$$"
       rm -rf "$temporary"
-      cp -a --no-preserve=mode,ownership "@STORE_APP@" "$temporary"
+      # Keep executable bits from the bundle while making files user-owned.
+      cp -a --no-preserve=ownership "@STORE_APP@" "$temporary"
       chmod -R u+rwX "$temporary"
       rm -rf "$runtime_app"
       mv "$temporary" "$runtime_app"
