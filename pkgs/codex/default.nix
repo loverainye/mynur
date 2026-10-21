@@ -60,7 +60,10 @@ stdenv.mkDerivation rec {
     "$out/bin/codex-code-mode-host" --help | grep -Fq "Usage: codex-code-mode-host"
     "$out/codex-path/rg" --version >/dev/null
     "$out/codex-resources/bwrap" --version >/dev/null
-    "$out/codex-resources/zsh/bin/zsh" --version >/dev/null
+    # Recent upstream bundles no longer include zsh.
+    if [ -e "$out/codex-resources/zsh/bin/zsh" ]; then
+      "$out/codex-resources/zsh/bin/zsh" --version >/dev/null
+    fi
     jq -e \
       --arg version "${lib.removePrefix "rust-v" version}" \
       --arg target "${target}" \
