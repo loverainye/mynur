@@ -125,52 +125,21 @@ stdenv.mkDerivation rec {
     mkdir -p "$out/lib/chatgpt"
     cp -r usr/lib/chatgpt/. "$out/lib/chatgpt/"
 
-    # The package ships native modules for other operating systems, libc
-    # implementations, and CPU architectures. Keep only Linux glibc x86_64
-    # modules so autoPatchelfHook sees valid native objects only.
-    find "$out/lib/chatgpt" -type d \( \
-      -iname '*darwin*' \
-      -o -iname '*windows*' \
-      -o -iname '*win32*' \
-      -o -iname '*freebsd*' \
-      -o -iname '*openbsd*' \
-      -o -iname '*android*' \
-      -o -iname '*musl*' \
-      -o -iname '*arm64*' \
-      -o -iname '*aarch64*' \
-      -o -iname '*armv7*' \
-      -o -iname '*ia32*' \
-      -o -iname '*x86_64*' ! -iname '*linux*' \
-    \) -prune -exec rm -rf {} +
-    find "$out/lib/chatgpt" -type f \( \
-      -iname '*.exe' \
-      -o -iname '*.dll' \
-      -o -iname '*.dylib' \
-      -o -iname '*darwin*' \
-      -o -iname '*windows*' \
-      -o -iname '*musl*' \
-      -o -iname '*arm64*' \
-      -o -iname '*aarch64*' \
-      -o -iname '*armv7*' \
-      -o -iname '*ia32*' \
-    \) -delete
+    # Filter actual native objects, not platform names in paths. The CUA
+    # entry points statically import cross-platform JavaScript, including
+    # bind_windows_app.js and Linux's list_windows.js.
     while IFS= read -r -d $'\0' native \
       && IFS= read -r -d $'\0' description; do
       case "$description" in
         *"ELF 64-bit LSB"*"x86-64"*)
-          case "$description" in
+          case "$native $description" in
             *musl*) rm -f "$native" ;;
           esac
           ;;
-        *ELF*) rm -f "$native" ;;
+        *ELF*|*PE32*|*MS-DOS\ executable*|*Mach-O*) rm -f "$native" ;;
       esac
     done < <(
-      find "$out/lib/chatgpt" -type f \( \
-        -perm /111 \
-        -o -iname '*.node' \
-        -o -iname '*.so' \
-        -o -iname '*.so.*' \
-      \) -print0 | xargs -0 -r file -0 -0 --
+      find "$out/lib/chatgpt" -type f -print0 | xargs -0 -r file -0 -0 --
     )
 
     chmod 755 "$out/lib/chatgpt/ChatGPT" "$out/lib/chatgpt/codex-launcher"
@@ -199,13 +168,15 @@ stdenv.mkDerivation rec {
     runtime_app="$runtime_root/chatgpt"
     if [ ! -x "$runtime_app/codex-launcher" ] \
       || [ ! -x "$runtime_app/ChatGPT" ] \
-      || [ ! -x "$runtime_app/browser_crashpad_handler" ]; then
+      || [ ! -x "$runtime_app/browser_crashpad_handler" ] \
+      || [ "$(cat "$runtime_app/.nix-store-path" 2>/dev/null || true)" != '@STORE_APP@' ]; then
       mkdir -p "$runtime_root"
       temporary="$runtime_root/.chatgpt-$$"
       rm -rf "$temporary"
       # Keep executable bits from the bundle while making files user-owned.
       cp -a --no-preserve=ownership "@STORE_APP@" "$temporary"
       chmod -R u+rwX "$temporary"
+      printf '%s\n' '@STORE_APP@' > "$temporary/.nix-store-path"
       rm -rf "$runtime_app"
       mv "$temporary" "$runtime_app"
     fi
@@ -214,6 +185,24 @@ stdenv.mkDerivation rec {
     CHATGPT_WRAPPER
     sed -i "s|@STORE_APP@|$out/lib/chatgpt|" "$out/bin/chatgpt"
     chmod 755 "$out/bin/chatgpt"
+  '';
+
+  # Catch missing transitive CUA imports before publishing a broken package.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    bash -n "$out/bin/chatgpt"
+    "$out/lib/chatgpt/resources/cua_node/bin/node" --input-type=module -e '
+      import { pathToFileURL } from "node:url";
+      const root = process.argv[1];
+      for (const entry of [
+        "lib/js/oai_js_cua/src/tinysky_alt/create_tinysky_alt.js",
+        "project/cua/sky_js/src/create_client.js",
+      ]) {
+        await import(pathToFileURL(root + "/" + entry).href);
+      }
+    ' "$out/lib/chatgpt/resources/cua_node/lib/node_modules/@oai/cua/dist"
+    runHook postInstallCheck
   '';
 
   meta = {
