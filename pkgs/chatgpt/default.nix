@@ -45,6 +45,7 @@
   qt5,
   qt6,
   systemd,
+  tpm2-tss,
   udev,
   xdg-utils,
 }:
@@ -105,6 +106,7 @@ stdenv.mkDerivation rec {
     qt5.qtbase.out
     qt6.qtbase.out
     systemd
+    tpm2-tss
     udev
     xdg-utils
   ];
@@ -185,6 +187,20 @@ stdenv.mkDerivation rec {
     CHATGPT_WRAPPER
     sed -i "s|@STORE_APP@|$out/lib/chatgpt|" "$out/bin/chatgpt"
     chmod 755 "$out/bin/chatgpt"
+  '';
+
+  preFixup = ''
+    # patchelf's program-header sorting breaks the bundled Node executable.
+    # Keep it out of normal fixups and patch it once without sorting, last.
+    mv "$out/lib/chatgpt/resources/cua_node/bin/node" "$NIX_BUILD_TOP/chatgpt-cua-node"
+    patchChatgptCuaNode() {
+      mv "$NIX_BUILD_TOP/chatgpt-cua-node" "$out/lib/chatgpt/resources/cua_node/bin/node"
+      patchelf --no-sort \
+        --set-interpreter "${stdenv.cc.libc}/lib/ld-linux-x86-64.so.2" \
+        --set-rpath "${lib.makeLibraryPath [ gcc.cc.lib ]}" \
+        "$out/lib/chatgpt/resources/cua_node/bin/node"
+    }
+    postFixupHooks+=(patchChatgptCuaNode)
   '';
 
   # Catch missing transitive CUA imports before publishing a broken package.
