@@ -113,6 +113,9 @@ stdenv.mkDerivation rec {
 
   dontStrip = true;
 
+  # Preserve the program-header order of the bundled Node executable.
+  patchelfFlags = [ "--no-sort" ];
+
   # These are bundled for other libc/OS targets and are not loaded on Linux.
   autoPatchelfIgnoreMissingDeps = [
     "libc.musl-x86_64.so.1"
@@ -122,8 +125,9 @@ stdenv.mkDerivation rec {
     "libm.so.10.1"
   ];
 
-  # Electron loads libGL through dlopen rather than a DT_NEEDED entry.
-  runtimeDependencies = [ libglvnd ];
+  # libGL is supplied through the launcher below. Injecting it into every
+  # executable's RPATH makes patchelf abort on the BOLT-optimized Python.
+  runtimeDependencies = [];
 
   unpackPhase = ''
     runHook preUnpack
@@ -150,6 +154,17 @@ stdenv.mkDerivation rec {
     cp -r usr/share/icons "$out/share/"
 
     runHook postInstall
+  '';
+
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    bash -n "$out/bin/workbuddy"
+    "$out/lib/workbuddy/resources/runtime/node/bin/node" --version
+    "$out/lib/workbuddy/resources/runtime/python/bin/python3.13" -I -B -c \
+      'import ctypes, ssl, sqlite3, venv, zlib; print(ssl.OPENSSL_VERSION); print(sqlite3.sqlite_version)'
+    ELECTRON_RUN_AS_NODE=1 "$out/bin/workbuddy" -e 'console.log(process.versions.electron)'
+    runHook postInstallCheck
   '';
 
   meta = {
