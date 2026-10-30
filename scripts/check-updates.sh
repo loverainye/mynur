@@ -12,7 +12,6 @@ CODEX_ASSET="codex-package-${CODEX_TARGET}.tar.gz"
 CODEX_CHECKSUMS_ASSET="codex-package_SHA256SUMS"
 CODEX_RELEASE_BASE_URL="https://github.com/openai/codex/releases/download"
 CC_SWITCH_GUI_REPO="farion1231/cc-switch"
-CC_SWITCH_GUI_VERSION_PREFIX="3."
 CC_SWITCH_GUI_RELEASE_BASE_URL="https://github.com/farion1231/cc-switch/releases/download"
 WORKBUDDY_UPDATE_URL="https://copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb"
 
@@ -250,15 +249,14 @@ load_cc_switch_gui_metadata() {
     return 0
   fi
 
-  get_latest_release "$CC_SWITCH_GUI_REPO" "$CC_SWITCH_GUI_VERSION_PREFIX" false
+  # 跟随最新稳定版，允许跨主版本更新。
+  get_latest_release "$CC_SWITCH_GUI_REPO" "" false
   cc_switch_gui_tag="$latest_release_result"
   if [ -z "$cc_switch_gui_tag" ]; then
-    record_failure "cc-switch-gui: 无法获取匹配前缀 $CC_SWITCH_GUI_VERSION_PREFIX 的最新版本"
+    record_failure "cc-switch-gui: 无法获取最新稳定版本"
     return 1
   fi
-  if ! cc_switch_gui_latest=$(normalize_github_version \
-    "$cc_switch_gui_tag" \
-    "$CC_SWITCH_GUI_VERSION_PREFIX"); then
+  if ! cc_switch_gui_latest=$(normalize_github_version "$cc_switch_gui_tag" ""); then
     record_failure "cc-switch-gui: 上游版本格式无效: $cc_switch_gui_tag"
     return 1
   fi

@@ -8,8 +8,8 @@ trap 'rm -rf "$tmp_dir"' EXIT
 codex_fixture_version="rust-v0.150.1"
 codex_update_version="rust-v0.151.0"
 export MOCK_CODEX_VERSION="$codex_fixture_version"
-cc_switch_gui_fixture_version="3.19.2"
-cc_switch_gui_update_version="3.20.2"
+cc_switch_gui_fixture_version="3.20.4"
+cc_switch_gui_update_version="4.0.22"
 cc_switch_gui_fixture_hash="sha256-5TDzWxKePeNNqkvpoG5YdkLljQpodPdVkT000BQmd/I="
 cc_switch_gui_update_hash="sha256-7wJhvZ6E17ebA5P8xdvJFmSrG3cdIv0Qjbya2g97P8c="
 workbuddy_fixture_version="5.5.3.37748631"
@@ -63,6 +63,9 @@ for argument in "$@"; do
   url="$argument"
 done
 case "$url" in
+  'https://api.github.com/repos/farion1231/cc-switch/releases?per_page=100')
+    printf '%s\n' "${MOCK_CC_SWITCH_GUI_RELEASES:-[]}"
+    ;;
   *copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb)
     printf '%s\n' "$MOCK_WORKBUDDY_METADATA"
     ;;
@@ -228,6 +231,33 @@ grep -Fq "version = \"$cc_switch_gui_update_version\"" \
   "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
 grep -Fq "hash = \"$cc_switch_gui_update_hash\"" \
   "$cc_switch_gui_root/pkgs/cc-switch-gui/default.nix"
+
+# 后续主版本也应被识别，避免仅把 3.x 的限制改成 4.x。
+cc_switch_gui_future_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=cc-switch-gui \
+  CHECK_UPDATES_REPO_ROOT="$cc_switch_gui_root" \
+  MOCK_CC_SWITCH_GUI_VERSION=v5.0.0 \
+  bash "$repo_root/scripts/check-updates.sh")
+grep -Fq "🔄 cc-switch-gui: $cc_switch_gui_update_version → 5.0.0" \
+  <<< "$cc_switch_gui_future_output"
+grep -q '^CHECK_UPDATES_FAILED=false$' <<< "$cc_switch_gui_future_output"
+
+# gh 无结果时，API 回退仍需跨主版本，并排除草稿和预发布版本。
+cc_switch_gui_releases='[
+  {"tag_name":"v7.0.0","draft":true,"prerelease":false},
+  {"tag_name":"v6.0.0-beta.1","draft":false,"prerelease":true},
+  {"tag_name":"v5.0.0","draft":false,"prerelease":false},
+  {"tag_name":"v3.20.4","draft":false,"prerelease":false}
+]'
+cc_switch_gui_curl_output=$(PATH="$tmp_dir/bin:$PATH" \
+  CHECK_UPDATES_ONLY=cc-switch-gui \
+  CHECK_UPDATES_REPO_ROOT="$cc_switch_gui_root" \
+  MOCK_FAIL_REPO=farion1231/cc-switch \
+  MOCK_CC_SWITCH_GUI_RELEASES="$cc_switch_gui_releases" \
+  bash "$repo_root/scripts/check-updates.sh")
+grep -Fq "🔄 cc-switch-gui: $cc_switch_gui_update_version → 5.0.0" \
+  <<< "$cc_switch_gui_curl_output"
+grep -q '^CHECK_UPDATES_FAILED=false$' <<< "$cc_switch_gui_curl_output"
 
 cc_switch_gui_failure_root="$tmp_dir/cc-switch-gui-failure-root"
 mkdir -p "$cc_switch_gui_failure_root/pkgs/cc-switch-gui"
