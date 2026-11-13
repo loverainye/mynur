@@ -31,11 +31,6 @@ in
     coreutils bash iproute2 iptables util-linux procps kmod systemd polkit
     cacert gnutar gzip xz zstd ];
   runScript = "${payload}/bin/kiri";
-  extraBuildCommands = ''
-    mkdir -p usr/lib/kiri usr/libexec/kiri
-    ln -s ${payload}/lib/kiri/kiri-window usr/lib/kiri/kiri-window
-    cp -rs ${payload}/libexec/kiri/. usr/libexec/kiri/
-  '';
   extraInstallCommands = ''
     mkdir -p "$out/share"
     cp -r ${payload}/share/applications ${payload}/share/icons "$out/share/"
