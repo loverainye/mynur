@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> { } }:
 
 {
+  kiri = pkgs.callPackage ./pkgs/kiri { };
   codex = pkgs.callPackage ./pkgs/codex { };
   chatgpt = pkgs.callPackage ./pkgs/chatgpt { };
   claude-code = pkgs.callPackage ./pkgs/claude-code { };
