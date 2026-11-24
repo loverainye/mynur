@@ -19,11 +19,11 @@
 
 stdenv.mkDerivation rec {
   pname = "cc-switch";
-  version = "4.0.39";
+  version = "4.0.40";
 
   src = fetchurl {
     url = "https://github.com/farion1231/cc-switch/releases/download/v${version}/CC-Switch-v${version}-Linux-x86_64.deb";
-    hash = "sha256-k4YTXVlZLB00yaHvDWzqSUp9S79ptinQtDWOxCvtRxc=";
+    hash = "sha256-5epZXUKi9lq0dcAO9w3gpCZ9iljf1sm6j/UTx2NTpsk=";
   };
 
   nativeBuildInputs = [ autoPatchelfHook makeWrapper ];
