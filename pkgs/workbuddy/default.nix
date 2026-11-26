@@ -52,12 +52,12 @@
 
 stdenv.mkDerivation rec {
   pname = "workbuddy";
-  version = "5.6.2.40046327";
+  version = "5.11.6.44396970";
 
   src = fetchurl {
-    url = "https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.6.2.40046327-c7b525f3.deb";
+    url = "https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-5.11.6.44396970-0f347fd9.deb";
     # The endpoint reports f6451117..., while the current CDN object verifies as c5db5f26....
-    hash = "sha256-EhSa2MDNdI/VBi2PYseCfWiNgJVCetqZsa6ecBmJdSM=";
+    hash = "sha256-Lu/l4ed3vIQSuL/mC5rLTMuiBZWopO7a8SARnjoVbeg=";
   };
 
   nativeBuildInputs = [
